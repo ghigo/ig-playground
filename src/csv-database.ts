@@ -262,4 +262,20 @@ export class CSVDatabase {
       unfollowed: profiles.filter(p => p.unfollowed).length,
     };
   }
+
+  /**
+   * Get list of active follower usernames (not unfollowed)
+   */
+  getActiveFollowers(): string[] {
+    return Array.from(this.profileMap.values())
+      .filter(p => !p.unfollowed)
+      .map(p => p.username);
+  }
+
+  /**
+   * Get all follower usernames (including unfollowed)
+   */
+  getAllFollowers(): string[] {
+    return Array.from(this.profileMap.keys());
+  }
 }

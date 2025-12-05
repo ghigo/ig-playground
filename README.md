@@ -1,62 +1,72 @@
 # Instagram Follower Scraper
 
-A Node.js/TypeScript application that logs into your Instagram account (with 2FA support), collects your followers list, gathers profile information for each follower, and saves the data to either a CSV file or Google Sheets.
+A Node.js/TypeScript application that imports your Instagram followers list from your data download, gathers detailed profile information for each follower, and saves the data to a persistent CSV database with smart caching.
 
 ## Features
 
+- ✅ **JSON import** - Import follower list from Instagram's official data download (required!)
+- ✅ **CSV database** - Persistent storage with smart caching
+- ✅ **Cache system** - Skip re-fetching profiles scraped within X days (default: 10)
+- ✅ **Unfollower tracking** - Track who unfollowed you (marked, not deleted)
 - ✅ Instagram login with 2FA support
-- ✅ Automatic follower list collection
-- ✅ **JSON import** - Import from Instagram's official data download (most reliable!)
 - ✅ Profile scraping (followers, following, posts, bio, verification status, etc.)
-- ✅ **CSV export (simple, no setup required)**
-- ✅ Google Sheets integration (optional)
 - ✅ Business account detection, external URLs, categories
 - ✅ Rate limiting to avoid being blocked
-- ✅ Batch saving
-- ✅ Progress tracking and error handling
+- ✅ Batch saving with progress tracking
+- ✅ Error handling and recovery
 
-## Quick Start (Recommended)
+## Quick Start
 
-**Want to get started in 5 minutes? Use CSV output!**
+### Step 1: Get Your Follower List
 
-See **[SIMPLE_SETUP.md](SIMPLE_SETUP.md)** for the easiest way to get running with CSV output (no Google Cloud setup needed).
+**Required:** You must import your follower list from Instagram's official data download.
 
-## JSON Import (Most Reliable!)
-
-**NEW:** Import and enrich follower data from Instagram's official data download!
-
-This is the **most reliable** method as it:
-- ✅ Gets your complete follower list (no scrolling limitations)
-- ✅ Uses Instagram's official export (no UI changes can break it)
-- ✅ Includes timestamps for when you followed/were followed
-- ✅ Works for thousands of followers
-
-### Quick Steps:
-
-1. Request your data: Instagram Settings → Privacy → Download Data
+1. Go to Instagram Settings → Privacy → Download Data
 2. Wait 24-48 hours for email
 3. Download and extract the ZIP file
-4. Run the importer:
-   ```bash
-   npm run build
-   npm run import path/to/followers.json
-   ```
+4. Find `followers.json` in the extracted folder
+
+### Step 2: Import and Scrape
+
+```bash
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Import your follower list and scrape profile data
+npm run import path/to/followers.json
+```
+
+**That's it!** The script will:
+- Import all followers from the JSON file
+- Scrape detailed profile info for each follower
+- Save to `output/instagram_followers.csv`
+- Cache results for 10 days (configurable)
+- Track unfollowers on subsequent runs
+
+### Step 3: Update Profile Data (Optional)
+
+To refresh profile data for your existing followers:
+
+```bash
+# Uses the follower list from CSV database
+npm start
+```
+
+This will only update profiles that haven't been scraped in X days (default: 10).
 
 See **[JSON_IMPORT_GUIDE.md](JSON_IMPORT_GUIDE.md)** for complete instructions.
 
 ## Prerequisites
 
-### For CSV Output (Easy!)
 - Node.js (v16 or higher)
 - npm or yarn
 - An Instagram account
+- Instagram data download (see Quick Start)
 
-### For Google Sheets Output (Advanced)
-- Everything above, plus:
-- A Google Cloud Project with Sheets API enabled
-- A Google Service Account with access to your target Google Sheet
-
-See **[SETUP_GUIDE.md](SETUP_GUIDE.md)** for detailed Google Sheets setup instructions.
+**Note:** Google Sheets integration is only available for JSON import (`npm run import`), not for live scraping (`npm start`).
 
 ## Setup Instructions
 
@@ -110,7 +120,7 @@ cp .env.example .env
 
 2. Edit `.env` and fill in your credentials:
 
-**For CSV Output (Simple):**
+**For CSV Output (Recommended):**
 ```env
 # Instagram Credentials
 IG_USERNAME=your_instagram_username
@@ -122,9 +132,10 @@ OUTPUT_FORMAT=csv
 # Optional Settings
 HEADLESS=false          # Set to 'true' to run browser in headless mode
 SCRAPE_DELAY=3000       # Delay between profile scrapes (milliseconds)
+CACHE_DAYS=10           # Number of days to cache profile data (default: 10)
 ```
 
-**For Google Sheets Output (Advanced):**
+**For Google Sheets Output (JSON import only):**
 ```env
 # Instagram Credentials
 IG_USERNAME=your_instagram_username
@@ -136,6 +147,9 @@ OUTPUT_FORMAT=google-sheets
 # Google Sheets Configuration
 GOOGLE_SHEET_ID=your_google_sheet_id
 GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./service-account-key.json
+
+# Note: Google Sheets mode only works with: npm run import
+# Live scraping (npm start) requires OUTPUT_FORMAT=csv
 
 # Optional Settings
 HEADLESS=false          # Set to 'true' to run browser in headless mode
@@ -150,36 +164,38 @@ npm run build
 
 ## Usage
 
-### Run in Development Mode
+### Import Follower List (Required First Step)
 
 ```bash
-npm run dev
+# Import from Instagram data download
+npm run import path/to/followers.json
 ```
 
-### Run in Production Mode
+**What happens:**
+1. Loads your follower list from the JSON file
+2. Marks any unfollowed users in the database
+3. Opens a browser and logs into Instagram
+4. Scrapes profile info for new/expired followers (skips cached)
+5. Saves to `output/instagram_followers.csv`
+
+### Update Profile Data (Optional)
 
 ```bash
+# Update profile data for existing followers
 npm start
 ```
 
-### What Happens When You Run the Script
+**What happens:**
+1. Loads follower list from CSV database
+2. Opens a browser and logs into Instagram
+3. Scrapes profile info only for followers whose data is older than `CACHE_DAYS`
+4. Updates the CSV database
 
-1. The script initializes and loads your configuration
-2. Connects to Google Sheets and sets up headers
-3. Opens a browser window (unless `HEADLESS=true`)
-4. Logs into Instagram with your credentials
-5. If 2FA is enabled, you'll be prompted to enter the code in the terminal
-6. Navigates to your profile and collects your followers list
-7. For each follower:
-   - Visits their profile
-   - Extracts profile information
-   - Saves data to Google Sheets in batches
-8. Displays progress and completion status
-9. Closes the browser
+**Note:** You must import a follower list first using `npm run import`. The script cannot scrape the follower list directly from Instagram.
 
 ## Output Data
 
-The script saves the following information to your Google Sheet:
+The script saves the following information to the CSV database (`output/instagram_followers.csv`):
 
 | Column | Description |
 |--------|-------------|
@@ -191,8 +207,13 @@ The script saves the following information to your Google Sheet:
 | Bio | Profile bio/description |
 | Verified | Whether the account is verified |
 | Private | Whether the account is private |
+| Business Account | Whether it's a business account |
+| Category | Business category (if applicable) |
+| External URL | External website/link (if any) |
 | Profile URL | Link to the Instagram profile |
-| Scraped At | Timestamp of when the data was collected |
+| Scraped At | Original timestamp when first scraped |
+| Last Updated | Most recent update timestamp |
+| Unfollowed | Whether this user has unfollowed you |
 
 ## Important Notes
 
