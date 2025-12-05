@@ -680,8 +680,10 @@ export class InstagramScraper {
         // Check if verified
         const isVerified = document.querySelector('svg[aria-label="Verified"]') !== null;
 
-        // Check if private
-        const isPrivate = document.querySelector('h2:has-text("This Account is Private"), article:has-text("This Account is Private")') !== null;
+        // Check if private - check page text content
+        const bodyText = document.body.innerText.toLowerCase();
+        const isPrivate = bodyText.includes('this account is private') ||
+                         bodyText.includes('this user is private');
 
         // Get profile pic
         const profilePic = document.querySelector('header img');
