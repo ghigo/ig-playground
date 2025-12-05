@@ -60,21 +60,35 @@ export class InstagramScraper {
     await this.page.click('button[type="submit"]');
 
     // Wait for navigation or 2FA prompt
-    await this.delay(3000);
+    await this.delay(5000);
 
-    // Check if 2FA is required
-    const is2FARequired = await this.check2FARequired();
+    // Check if 2FA is required (check multiple times to be sure)
+    let is2FARequired = await this.check2FARequired();
+
+    if (!is2FARequired) {
+      // Wait a bit more and check again
+      await this.delay(2000);
+      is2FARequired = await this.check2FARequired();
+    }
 
     if (is2FARequired) {
-      console.log('2FA detected. Waiting for code input...');
+      console.log('\n⚠️  2FA REQUIRED ⚠️');
+      console.log('The browser window will stay open.');
+      console.log('Please check your authenticator app and enter the code below.\n');
       await this.handle2FA();
     }
+
+    // Extra wait after 2FA to ensure page loads
+    await this.delay(3000);
 
     // Handle "Save Your Login Info?" dialog
     await this.handleSaveLoginInfo();
 
     // Handle "Turn on Notifications" dialog
     await this.handleNotifications();
+
+    // Final wait to ensure we're fully logged in
+    await this.delay(2000);
 
     this.isLoggedIn = true;
     console.log('Successfully logged in!');
@@ -95,19 +109,38 @@ export class InstagramScraper {
   private async handle2FA(): Promise<void> {
     if (!this.page) return;
 
-    // Wait for 2FA code input
-    await this.page.waitForSelector('input[name="verificationCode"]', { timeout: 60000 });
+    try {
+      // Wait for 2FA code input field to appear
+      console.log('Waiting for 2FA input field...');
+      await this.page.waitForSelector('input[name="verificationCode"]', { timeout: 60000 });
 
-    // Prompt user for 2FA code
-    const code = await this.prompt2FACode();
+      // Give user time to see the screen
+      await this.delay(1000);
 
-    // Enter 2FA code
-    await this.page.type('input[name="verificationCode"]', code, { delay: 100 });
-    await this.delay(1000);
+      // Prompt user for 2FA code
+      const code = await this.prompt2FACode();
 
-    // Click confirm button
-    await this.page.click('button[type="submit"]');
-    await this.delay(3000);
+      console.log('Entering 2FA code...');
+      // Clear the field first
+      await this.page.click('input[name="verificationCode"]', { clickCount: 3 });
+
+      // Enter 2FA code
+      await this.page.type('input[name="verificationCode"]', code, { delay: 150 });
+      await this.delay(1500);
+
+      // Click confirm button
+      console.log('Submitting 2FA code...');
+      await this.page.click('button[type="submit"]');
+
+      // Wait for navigation after 2FA
+      console.log('Waiting for 2FA verification...');
+      await this.delay(5000);
+
+      console.log('2FA verification completed');
+    } catch (error) {
+      console.error('Error during 2FA handling:', error);
+      throw error;
+    }
   }
 
   private prompt2FACode(): Promise<string> {
@@ -129,16 +162,19 @@ export class InstagramScraper {
 
     try {
       // Wait a bit for the dialog to appear
-      await this.delay(2000);
+      await this.delay(3000);
 
-      // Look for "Not Now" or "Save Info" button
-      const notNowButton = await this.page.$('button:has-text("Not Now"), button:has-text("not now")');
-      if (notNowButton) {
-        await notNowButton.click();
-        await this.delay(1000);
+      // Try to find and click "Not Now" button using XPath (works with Puppeteer)
+      const buttons = await this.page.$x("//button[contains(text(), 'Not Now') or contains(text(), 'not now') or contains(text(), 'Not now')]");
+
+      if (buttons.length > 0) {
+        console.log('Dismissing "Save Login Info" dialog...');
+        await buttons[0].click();
+        await this.delay(2000);
       }
     } catch (error) {
       // Dialog might not appear, continue
+      console.log('No "Save Login Info" dialog found, continuing...');
     }
   }
 
@@ -146,16 +182,19 @@ export class InstagramScraper {
     if (!this.page) return;
 
     try {
-      await this.delay(2000);
+      await this.delay(3000);
 
-      // Look for "Not Now" button for notifications
-      const notNowButton = await this.page.$('button:has-text("Not Now"), button:has-text("not now")');
-      if (notNowButton) {
-        await notNowButton.click();
-        await this.delay(1000);
+      // Try to find and click "Not Now" button for notifications
+      const buttons = await this.page.$x("//button[contains(text(), 'Not Now') or contains(text(), 'not now') or contains(text(), 'Not now')]");
+
+      if (buttons.length > 0) {
+        console.log('Dismissing notifications dialog...');
+        await buttons[0].click();
+        await this.delay(2000);
       }
     } catch (error) {
       // Dialog might not appear, continue
+      console.log('No notifications dialog found, continuing...');
     }
   }
 
@@ -167,18 +206,42 @@ export class InstagramScraper {
     console.log(`Navigating to ${username}'s profile...`);
     await this.page.goto(`https://www.instagram.com/${username}/`, {
       waitUntil: 'networkidle2',
+      timeout: 30000,
     });
 
-    await this.delay(2000);
+    await this.delay(3000);
 
-    // Click on followers link
-    console.log('Opening followers list...');
-    const followersLink = await this.page.$('a[href*="/followers/"]');
-
-    if (!followersLink) {
-      throw new Error('Could not find followers link. Profile might be private.');
+    // Try to dismiss any lingering dialogs on the profile page
+    try {
+      const buttons = await this.page.$x("//button[contains(text(), 'Not Now') or contains(text(), 'not now')]");
+      if (buttons.length > 0) {
+        console.log('Dismissing dialog on profile page...');
+        await buttons[0].click();
+        await this.delay(2000);
+      }
+    } catch (error) {
+      // No dialog, continue
     }
 
+    // Click on followers link
+    console.log('Looking for followers link...');
+    let followersLink = await this.page.$('a[href*="/followers/"]');
+
+    // If not found, wait a bit and try again
+    if (!followersLink) {
+      console.log('Followers link not found, waiting and retrying...');
+      await this.delay(3000);
+      followersLink = await this.page.$('a[href*="/followers/"]');
+    }
+
+    if (!followersLink) {
+      // Take a screenshot for debugging
+      console.log('Taking screenshot for debugging...');
+      await this.page.screenshot({ path: 'debug-profile.png' });
+      throw new Error('Could not find followers link. Profile might be private or Instagram UI has changed. Screenshot saved to debug-profile.png');
+    }
+
+    console.log('Opening followers list...');
     await followersLink.click();
     await this.delay(3000);
 
