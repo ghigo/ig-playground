@@ -325,41 +325,53 @@ export class InstagramScraper {
       await this.page.type('input[name="verificationCode"]', code, { delay: 200 });
       await this.delay(2000);
 
+      // Take screenshot before clicking button
+      console.log('Taking screenshot before button click...');
+      await this.page.screenshot({ path: 'debug-before-2fa-submit.png' });
+
       // Click confirm button - try multiple selectors
       console.log('Submitting 2FA code...');
+      console.log('Current URL:', this.page.url());
       let buttonClicked = false;
 
-      // Try different button selectors that Instagram might use
-      const buttonSelectors = [
-        'button[type="submit"]',
-        'button:not([type="button"])',
-        'div[role="button"]',
-      ];
+      // First, try to find the SPECIFIC confirm/next button for 2FA using text content
+      const xpathButtons = await this.page.$x("//button[contains(text(), 'Confirm') or contains(text(), 'confirm') or contains(text(), 'Next') or contains(text(), 'next')]");
 
-      for (const selector of buttonSelectors) {
-        try {
-          const button = await this.page.$(selector);
-          if (button) {
-            await button.click();
-            buttonClicked = true;
-            console.log(`Clicked button using selector: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          // Try next selector
-        }
+      if (xpathButtons.length > 0) {
+        console.log(`Found ${xpathButtons.length} button(s) with Confirm/Next text`);
+        const button = xpathButtons[0] as any;
+
+        // Get button text for debugging
+        const buttonText = await button.evaluate((el: any) => el.textContent);
+        console.log(`Clicking button with text: "${buttonText}"`);
+
+        await button.click();
+        buttonClicked = true;
+        console.log('Clicked button using XPath (Confirm/Next)');
       }
 
-      // If no button found with CSS selectors, try XPath
+      // If XPath didn't work, try CSS selectors
       if (!buttonClicked) {
-        console.log('Trying XPath to find submit button...');
-        const xpathButtons = await this.page.$x("//button[contains(text(), 'Confirm') or contains(text(), 'Next') or contains(text(), 'Submit')]");
+        const buttonSelectors = [
+          'button[type="submit"]',
+          'button:not([type="button"])',
+          'div[role="button"]',
+        ];
 
-        if (xpathButtons.length > 0) {
-          const button = xpathButtons[0] as any;
-          await button.click();
-          buttonClicked = true;
-          console.log('Clicked button using XPath');
+        for (const selector of buttonSelectors) {
+          try {
+            const buttons = await this.page.$$(selector);
+            if (buttons.length > 0) {
+              console.log(`Found ${buttons.length} button(s) with selector: ${selector}`);
+              // Click the first one
+              await buttons[0].click();
+              buttonClicked = true;
+              console.log(`Clicked button using selector: ${selector}`);
+              break;
+            }
+          } catch (e) {
+            // Try next selector
+          }
         }
       }
 
@@ -371,11 +383,31 @@ export class InstagramScraper {
         buttonClicked = true;
       }
 
+      // Wait a bit and take screenshot after clicking
+      await this.delay(3000);
+      console.log('Taking screenshot after button click...');
+      await this.page.screenshot({ path: 'debug-after-2fa-submit.png' });
+      console.log('Current URL after click:', this.page.url());
+
+      // Check if we're still on the 2FA page
+      const still2FA = await this.page.$('input[name="verificationCode"]');
+      if (still2FA) {
+        console.log('⚠️  Still on 2FA page! Button click may not have worked.');
+        console.log('Screenshots saved: debug-before-2fa-submit.png and debug-after-2fa-submit.png');
+
+        // Try pressing Enter as a last resort
+        console.log('Trying Enter key as backup...');
+        await this.page.focus('input[name="verificationCode"]');
+        await this.page.keyboard.press('Enter');
+        await this.delay(3000);
+      }
+
       // Wait for navigation after 2FA - give it more time
       console.log('Waiting for 2FA verification and page load...');
       await this.delay(8000); // Increased from 5000
 
       console.log('2FA verification completed');
+      console.log('Final URL:', this.page.url());
     } catch (error) {
       console.error('Error during 2FA handling:', error);
       throw error;
