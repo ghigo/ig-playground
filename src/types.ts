@@ -13,8 +13,9 @@ export interface IGProfile {
 export interface Config {
   igUsername: string;
   igPassword: string;
-  googleSheetId: string;
-  googleServiceAccountKeyPath: string;
+  outputFormat: 'csv' | 'google-sheets';
+  googleSheetId?: string;
+  googleServiceAccountKeyPath?: string;
   headless: boolean;
   scrapeDelay: number;
 }

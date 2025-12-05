@@ -6,6 +6,7 @@ dotenv.config();
 export function getConfig(): Config {
   const igUsername = process.env.IG_USERNAME;
   const igPassword = process.env.IG_PASSWORD;
+  const outputFormat = (process.env.OUTPUT_FORMAT || 'csv') as 'csv' | 'google-sheets';
   const googleSheetId = process.env.GOOGLE_SHEET_ID;
   const googleServiceAccountKeyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH || './service-account-key.json';
 
@@ -13,13 +14,15 @@ export function getConfig(): Config {
     throw new Error('Instagram credentials not found in .env file');
   }
 
-  if (!googleSheetId) {
-    throw new Error('Google Sheet ID not found in .env file');
+  // Only require Google Sheets config if that output format is selected
+  if (outputFormat === 'google-sheets' && !googleSheetId) {
+    throw new Error('Google Sheet ID is required when OUTPUT_FORMAT=google-sheets');
   }
 
   return {
     igUsername,
     igPassword,
+    outputFormat,
     googleSheetId,
     googleServiceAccountKeyPath,
     headless: process.env.HEADLESS === 'true',

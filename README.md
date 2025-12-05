@@ -1,24 +1,37 @@
 # Instagram Follower Scraper
 
-A Node.js/TypeScript application that logs into your Instagram account (with 2FA support), collects your followers list, gathers profile information for each follower, and saves the data to a Google Sheet.
+A Node.js/TypeScript application that logs into your Instagram account (with 2FA support), collects your followers list, gathers profile information for each follower, and saves the data to either a CSV file or Google Sheets.
 
 ## Features
 
 - ✅ Instagram login with 2FA support
 - ✅ Automatic follower list collection
 - ✅ Profile scraping (followers, following, posts, bio, verification status, etc.)
-- ✅ Google Sheets integration for data storage
+- ✅ **CSV export (simple, no setup required)**
+- ✅ Google Sheets integration (optional)
 - ✅ Rate limiting to avoid being blocked
-- ✅ Batch saving to Google Sheets
+- ✅ Batch saving
 - ✅ Progress tracking and error handling
+
+## Quick Start (Recommended)
+
+**Want to get started in 5 minutes? Use CSV output!**
+
+See **[SIMPLE_SETUP.md](SIMPLE_SETUP.md)** for the easiest way to get running with CSV output (no Google Cloud setup needed).
 
 ## Prerequisites
 
+### For CSV Output (Easy!)
 - Node.js (v16 or higher)
 - npm or yarn
 - An Instagram account
+
+### For Google Sheets Output (Advanced)
+- Everything above, plus:
 - A Google Cloud Project with Sheets API enabled
 - A Google Service Account with access to your target Google Sheet
+
+See **[SETUP_GUIDE.md](SETUP_GUIDE.md)** for detailed Google Sheets setup instructions.
 
 ## Setup Instructions
 
@@ -72,10 +85,28 @@ cp .env.example .env
 
 2. Edit `.env` and fill in your credentials:
 
+**For CSV Output (Simple):**
 ```env
 # Instagram Credentials
 IG_USERNAME=your_instagram_username
 IG_PASSWORD=your_instagram_password
+
+# Output Format
+OUTPUT_FORMAT=csv
+
+# Optional Settings
+HEADLESS=false          # Set to 'true' to run browser in headless mode
+SCRAPE_DELAY=3000       # Delay between profile scrapes (milliseconds)
+```
+
+**For Google Sheets Output (Advanced):**
+```env
+# Instagram Credentials
+IG_USERNAME=your_instagram_username
+IG_PASSWORD=your_instagram_password
+
+# Output Format
+OUTPUT_FORMAT=google-sheets
 
 # Google Sheets Configuration
 GOOGLE_SHEET_ID=your_google_sheet_id
