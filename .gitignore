@@ -5,3 +5,5 @@ output/
 service-account-key.json
 *.log
 .DS_Store
+.browser-data/
+debug-*.png

@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import * as readline from 'readline';
+import * as path from 'path';
 import { IGProfile } from './types';
 
 export class InstagramScraper {
@@ -10,8 +11,12 @@ export class InstagramScraper {
   constructor(private headless: boolean = false) {}
 
   async init(): Promise<void> {
+    // Use a persistent user data directory to save session/cookies
+    const userDataDir = path.join(process.cwd(), '.browser-data');
+
     this.browser = await puppeteer.launch({
       headless: this.headless,
+      userDataDir, // This saves cookies and session data
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -37,6 +42,28 @@ export class InstagramScraper {
       throw new Error('Browser not initialized. Call init() first.');
     }
 
+    console.log('Checking if already logged in...');
+    await this.page.goto('https://www.instagram.com/', {
+      waitUntil: 'networkidle2',
+    });
+
+    await this.delay(2000);
+
+    // Check if we're already logged in by looking for common elements
+    const isAlreadyLoggedIn = await this.checkIfLoggedIn();
+
+    if (isAlreadyLoggedIn) {
+      console.log('✓ Already logged in! Using saved session.');
+      this.isLoggedIn = true;
+
+      // Handle any dialogs that might appear
+      await this.handleSaveLoginInfo();
+      await this.handleNotifications();
+
+      return;
+    }
+
+    console.log('Not logged in. Proceeding with login...');
     console.log('Navigating to Instagram login page...');
     await this.page.goto('https://www.instagram.com/accounts/login/', {
       waitUntil: 'networkidle2',
@@ -92,6 +119,31 @@ export class InstagramScraper {
 
     this.isLoggedIn = true;
     console.log('Successfully logged in!');
+  }
+
+  private async checkIfLoggedIn(): Promise<boolean> {
+    if (!this.page) return false;
+
+    try {
+      // Check for elements that only appear when logged in
+      // Look for the search bar, home icon, or user navigation
+      const loggedInIndicators = await Promise.all([
+        this.page.$('svg[aria-label="Home"]'),
+        this.page.$('svg[aria-label="Search"]'),
+        this.page.$('a[href^="/"][href$="/"]'), // Profile link
+      ]);
+
+      // If any of these elements exist, we're likely logged in
+      const hasLoggedInElements = loggedInIndicators.some(el => el !== null);
+
+      // Also check we're NOT on a login page
+      const loginInput = await this.page.$('input[name="username"]');
+      const isOnLoginPage = loginInput !== null;
+
+      return hasLoggedInElements && !isOnLoginPage;
+    } catch (error) {
+      return false;
+    }
   }
 
   private async check2FARequired(): Promise<boolean> {
