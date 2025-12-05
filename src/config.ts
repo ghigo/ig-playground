@@ -29,5 +29,6 @@ export function getConfig(): Config {
     googleServiceAccountKeyPath,
     headless: process.env.HEADLESS === 'true',
     scrapeDelay: parseInt(process.env.SCRAPE_DELAY || '3000', 10),
+    cacheDays: parseInt(process.env.CACHE_DAYS || '10', 10),
   };
 }

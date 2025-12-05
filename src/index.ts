@@ -1,6 +1,7 @@
 import { InstagramScraper } from './instagram-scraper';
 import { GoogleSheetsService } from './google-sheets';
 import { CSVWriter } from './csv-writer';
+import { CSVDatabase } from './csv-database';
 import { getConfig } from './config';
 import { IGProfile } from './types';
 
@@ -14,11 +15,12 @@ async function main() {
     console.log(`   Instagram Account: ${config.igUsername}`);
     console.log(`   Output Format: ${config.outputFormat}`);
     console.log(`   Headless Mode: ${config.headless}`);
-    console.log(`   Scrape Delay: ${config.scrapeDelay}ms\n`);
+    console.log(`   Scrape Delay: ${config.scrapeDelay}ms`);
+    console.log(`   Cache Duration: ${config.cacheDays} days\n`);
 
     // Initialize output service (CSV or Google Sheets)
     let sheetsService: GoogleSheetsService | null = null;
-    let csvWriter: CSVWriter | null = null;
+    let csvDatabase: CSVDatabase | null = null;
 
     if (config.outputFormat === 'google-sheets') {
       console.log('📊 Initializing Google Sheets...');
@@ -29,10 +31,10 @@ async function main() {
       await sheetsService.initializeSheet();
       console.log('✓ Google Sheets initialized\n');
     } else {
-      console.log('📄 Initializing CSV Writer...');
-      csvWriter = new CSVWriter();
-      await csvWriter.initialize();
-      console.log('✓ CSV Writer initialized\n');
+      console.log('📄 Initializing CSV Database...');
+      csvDatabase = new CSVDatabase('instagram_followers.csv');
+      await csvDatabase.load();
+      console.log('✓ CSV Database initialized\n');
     }
 
     // Initialize Instagram Scraper
@@ -68,35 +70,66 @@ async function main() {
       return;
     }
 
+    // Mark unfollowed users (only for CSV database)
+    if (csvDatabase) {
+      const unfollowedCount = csvDatabase.markUnfollowed(followers);
+      if (unfollowedCount > 0) {
+        console.log(`⚠️  Marked ${unfollowedCount} users as unfollowed (no longer in follower list)\n`);
+      }
+    }
+
     // Scrape profile information for each follower
-    console.log(`📝 Scraping profile information for ${followers.length} followers...`);
+    console.log(`📝 Processing ${followers.length} followers...`);
     console.log('   This may take a while...\n');
 
     const profiles: IGProfile[] = [];
     const batchSize = 10; // Save to sheet every 10 profiles
+    let scrapedCount = 0;
+    let cachedCount = 0;
 
     for (let i = 0; i < followers.length; i++) {
       const username = followers[i];
       const progress = `[${i + 1}/${followers.length}]`;
 
       try {
+        // Check if we should update this profile (cache logic for CSV)
+        if (csvDatabase && !csvDatabase.shouldUpdate(username, config.cacheDays)) {
+          const cached = csvDatabase.get(username);
+          if (cached) {
+            console.log(`${progress} @${username} (cached)`);
+            console.log(`   → ${cached.fullName || 'N/A'} | Followers: ${cached.followers} | Using cached data`);
+            // Still upsert to mark as not unfollowed
+            csvDatabase.upsert(cached);
+            cachedCount++;
+            continue;
+          }
+        }
+
         console.log(`${progress} Scraping @${username}...`);
         const profile = await scraper.getProfileInfo(username);
-        profiles.push(profile);
+
+        if (csvDatabase) {
+          csvDatabase.upsert(profile);
+        } else {
+          profiles.push(profile);
+        }
+
+        scrapedCount++;
 
         // Display quick stats
         console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
 
-        // Save in batches
-        if (profiles.length >= batchSize) {
-          if (sheetsService) {
-            await sheetsService.addProfiles(profiles);
-            console.log(`   ✓ Saved batch of ${profiles.length} profiles to Google Sheets\n`);
-          } else if (csvWriter) {
-            await csvWriter.addProfiles(profiles);
-            console.log(`   ✓ Saved batch of ${profiles.length} profiles to CSV\n`);
-          }
+        // Save in batches (Google Sheets only, CSV saves at end)
+        if (sheetsService && profiles.length >= batchSize) {
+          await sheetsService.addProfiles(profiles);
+          console.log(`   ✓ Saved batch of ${profiles.length} profiles to Google Sheets\n`);
           profiles.length = 0; // Clear array
+        }
+
+        // Save CSV database periodically
+        if (csvDatabase && scrapedCount % batchSize === 0) {
+          await csvDatabase.save();
+          console.log(`   ✓ Saved progress to database\n`);
         }
 
         // Delay to avoid rate limiting
@@ -109,29 +142,27 @@ async function main() {
       }
     }
 
-    // Save remaining profiles
-    if (profiles.length > 0) {
-      if (sheetsService) {
-        await sheetsService.addProfiles(profiles);
-        console.log(`\n✓ Saved final batch of ${profiles.length} profiles to Google Sheets`);
-      } else if (csvWriter) {
-        await csvWriter.addProfiles(profiles);
-        console.log(`\n✓ Saved final batch of ${profiles.length} profiles to CSV`);
-      }
+    // Save final data
+    if (sheetsService && profiles.length > 0) {
+      await sheetsService.addProfiles(profiles);
+      console.log(`\n✓ Saved final batch of ${profiles.length} profiles to Google Sheets`);
     }
 
-    // Close CSV writer if used
-    if (csvWriter) {
-      await csvWriter.close();
+    if (csvDatabase) {
+      await csvDatabase.save();
+      const stats = csvDatabase.getStats();
+      console.log(`\n✓ Database saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
     }
 
     console.log('\n✅ Scraping completed successfully!');
-    console.log(`📊 Total profiles scraped: ${followers.length}`);
+    console.log(`📊 Total followers: ${followers.length}`);
+    console.log(`   • New/Updated profiles: ${scrapedCount}`);
+    console.log(`   • Cached profiles: ${cachedCount}`);
 
     if (config.outputFormat === 'google-sheets') {
       console.log(`🔗 View your Google Sheet: https://docs.google.com/spreadsheets/d/${config.googleSheetId}`);
-    } else if (csvWriter) {
-      console.log(`📁 CSV file saved to: ${csvWriter.getFilePath()}`);
+    } else if (csvDatabase) {
+      console.log(`📁 CSV database saved to: ${csvDatabase.getFilePath()}`);
     }
 
     // Close browser

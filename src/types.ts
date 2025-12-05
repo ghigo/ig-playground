@@ -11,6 +11,8 @@ export interface IGProfile {
   externalUrl?: string;
   category?: string;
   isBusinessAccount: boolean;
+  lastUpdated?: string; // ISO timestamp of when data was last fetched
+  unfollowed?: boolean; // True if user no longer follows/is followed by this account
 }
 
 export interface Config {
@@ -22,4 +24,5 @@ export interface Config {
   googleServiceAccountKeyPath?: string;
   headless: boolean;
   scrapeDelay: number;
+  cacheDays: number; // Number of days to cache profile data
 }
