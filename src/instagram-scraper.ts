@@ -749,9 +749,23 @@ export class InstagramScraper {
 
         // Get category (for business/creator accounts)
         let category = '';
-        const categoryElement = document.querySelector('header section div[class*="category"], header section div:has(> div:contains("Category"))') as HTMLElement;
-        if (categoryElement) {
-          category = categoryElement.innerText.trim();
+        // Try to find category text in the header
+        const headerElements = document.querySelectorAll('header section div, header section span');
+        for (const element of Array.from(headerElements)) {
+          const text = (element as HTMLElement).innerText || '';
+          // Look for category-like text (usually short, capitalized, not numbers)
+          if (text.length > 0 && text.length < 50 &&
+              !text.includes('@') &&
+              !text.match(/^\d+$/) &&
+              !text.includes('follower') &&
+              !text.includes('following') &&
+              !text.includes('post')) {
+            // Common business categories
+            if (text.match(/entrepreneur|artist|musician|photographer|designer|business|creator|influencer|brand|company|restaurant|fitness|coach|consultant/i)) {
+              category = text.trim();
+              break;
+            }
+          }
         }
 
         // Check if business account
