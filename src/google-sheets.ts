@@ -51,6 +51,9 @@ export class GoogleSheetsService {
       'Bio',
       'Verified',
       'Private',
+      'Business Account',
+      'Category',
+      'External URL',
       'Profile URL',
       'Scraped At',
     ];
@@ -65,13 +68,13 @@ export class GoogleSheetsService {
     // Clear existing data
     await this.sheets.spreadsheets.values.clear({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A:J`,
+      range: `${sheetName}!A:M`,
     });
 
     // Set headers
     await this.sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A1:J1`,
+      range: `${sheetName}!A1:M1`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [headers],
@@ -123,13 +126,16 @@ export class GoogleSheetsService {
       profile.bio,
       profile.isVerified ? 'Yes' : 'No',
       profile.isPrivate ? 'Yes' : 'No',
+      profile.isBusinessAccount ? 'Yes' : 'No',
+      profile.category || '',
+      profile.externalUrl || '',
       `https://instagram.com/${profile.username}`,
       new Date().toISOString(),
     ];
 
     await this.sheets.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A:J`,
+      range: `${sheetName}!A:M`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [row],
@@ -155,13 +161,16 @@ export class GoogleSheetsService {
       profile.bio,
       profile.isVerified ? 'Yes' : 'No',
       profile.isPrivate ? 'Yes' : 'No',
+      profile.isBusinessAccount ? 'Yes' : 'No',
+      profile.category || '',
+      profile.externalUrl || '',
       `https://instagram.com/${profile.username}`,
       new Date().toISOString(),
     ]);
 
     await this.sheets.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A:J`,
+      range: `${sheetName}!A:M`,
       valueInputOption: 'RAW',
       requestBody: {
         values: rows,

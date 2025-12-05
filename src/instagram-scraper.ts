@@ -564,40 +564,54 @@ export class InstagramScraper {
     const followers = new Set<string>();
     let previousCount = 0;
     let stableCount = 0;
+    let scrollAttempts = 0;
+    const maxScrollAttempts = 100; // Prevent infinite loop
 
-    // Find the scrollable container
-    const dialogSelector = 'div[role="dialog"] div';
+    while (stableCount < 10 && scrollAttempts < maxScrollAttempts) {
+      scrollAttempts++;
 
-    while (stableCount < 5) {
       // Extract usernames from the current view
       const currentFollowers = await this.page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('div[role="dialog"] a[href^="/"]'));
         return links
           .map(link => {
             const href = link.getAttribute('href');
-            if (href && href.length > 1 && !href.includes('explore')) {
+            if (href && href.length > 1 && !href.includes('explore') && !href.includes('p/')) {
               const username = href.split('/')[1].split('?')[0];
               return username;
             }
             return null;
           })
-          .filter((u): u is string => u !== null && u.length > 0);
+          .filter((u): u is string => u !== null && u.length > 0 && u !== '');
       });
 
       currentFollowers.forEach(follower => followers.add(follower));
 
-      // Scroll the dialog
-      await this.page.evaluate(() => {
+      // Scroll the dialog - try multiple methods
+      const scrolled = await this.page.evaluate(() => {
         const dialog = document.querySelector('div[role="dialog"]');
-        if (dialog) {
-          const scrollableDiv = dialog.querySelector('div > div > div:last-child');
+        if (!dialog) return false;
+
+        // Try to find the scrollable element
+        const scrollableSelectors = [
+          'div[style*="overflow"]',
+          'div > div > div:last-child',
+          'div:has(> div > div > div)',
+        ];
+
+        for (const selector of scrollableSelectors) {
+          const scrollableDiv = dialog.querySelector(selector);
           if (scrollableDiv) {
+            const beforeScroll = scrollableDiv.scrollTop;
             scrollableDiv.scrollTop = scrollableDiv.scrollHeight;
+            return scrollableDiv.scrollTop !== beforeScroll; // Returns true if scrolled
           }
         }
+
+        return false;
       });
 
-      await this.delay(1500);
+      await this.delay(2000); // Increased delay for Instagram to load more
 
       // Check if we're still finding new followers
       if (followers.size === previousCount) {
@@ -607,8 +621,14 @@ export class InstagramScraper {
         previousCount = followers.size;
         console.log(`Found ${followers.size} followers so far...`);
       }
+
+      // If we couldn't scroll, increase stable count
+      if (!scrolled) {
+        stableCount += 2;
+      }
     }
 
+    console.log(`Scroll complete. Total attempts: ${scrollAttempts}`);
     return Array.from(followers);
   }
 
@@ -669,13 +689,40 @@ export class InstagramScraper {
           });
         }
 
-        // Get full name
-        const fullNameElement = document.querySelector('header section div span') as HTMLElement;
-        const fullName = fullNameElement?.innerText || '';
+        // Get full name - try multiple selectors
+        let fullName = '';
+        const fullNameSelectors = [
+          'header section > div:first-child span',
+          'header section span:not([class*="username"])',
+          'section > div > div > span',
+        ];
 
-        // Get bio
-        const bioElement = document.querySelector('header section div._aa_c h1 + span, header section div._aa_c h1 + div') as HTMLElement;
-        const bio = bioElement?.innerText || '';
+        for (const selector of fullNameSelectors) {
+          const element = document.querySelector(selector) as HTMLElement;
+          if (element && element.innerText && !element.innerText.includes('@')) {
+            fullName = element.innerText.trim();
+            break;
+          }
+        }
+
+        // Get bio - try multiple approaches
+        let bio = '';
+        const bioSelectors = [
+          'header section > div:last-child span',
+          'section > div > div:last-child > span',
+          'header section div._aa_c h1 + span',
+        ];
+
+        for (const selector of bioSelectors) {
+          const element = document.querySelector(selector) as HTMLElement;
+          if (element && element.innerText && !element.innerText.match(/^\d+$/)) {
+            const text = element.innerText.trim();
+            if (text.length > 0 && !text.includes('follower') && !text.includes('following')) {
+              bio = text;
+              break;
+            }
+          }
+        }
 
         // Check if verified
         const isVerified = document.querySelector('svg[aria-label="Verified"]') !== null;
@@ -689,6 +736,27 @@ export class InstagramScraper {
         const profilePic = document.querySelector('header img');
         const profilePicUrl = profilePic?.getAttribute('src') || '';
 
+        // Get external URL (website link)
+        let externalUrl = '';
+        const linkElements = document.querySelectorAll('header a[href^="http"], header a[rel="me nofollow"]');
+        for (const link of Array.from(linkElements)) {
+          const href = link.getAttribute('href');
+          if (href && !href.includes('instagram.com')) {
+            externalUrl = href;
+            break;
+          }
+        }
+
+        // Get category (for business/creator accounts)
+        let category = '';
+        const categoryElement = document.querySelector('header section div[class*="category"], header section div:has(> div:contains("Category"))') as HTMLElement;
+        if (categoryElement) {
+          category = categoryElement.innerText.trim();
+        }
+
+        // Check if business account
+        const isBusinessAccount = bodyText.includes('contact') || bodyText.includes('email') || category.length > 0;
+
         return {
           username,
           fullName,
@@ -699,6 +767,9 @@ export class InstagramScraper {
           isVerified,
           isPrivate,
           profilePicUrl,
+          externalUrl,
+          category,
+          isBusinessAccount,
         };
       });
 
@@ -717,6 +788,9 @@ export class InstagramScraper {
         isVerified: false,
         isPrivate: false,
         profilePicUrl: '',
+        externalUrl: '',
+        category: '',
+        isBusinessAccount: false,
       };
     }
   }

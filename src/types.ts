@@ -8,6 +8,9 @@ export interface IGProfile {
   isVerified: boolean;
   isPrivate: boolean;
   profilePicUrl: string;
+  externalUrl?: string;
+  category?: string;
+  isBusinessAccount: boolean;
 }
 
 export interface Config {

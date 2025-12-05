@@ -36,6 +36,9 @@ export class CSVWriter {
       'Bio',
       'Verified',
       'Private',
+      'Business Account',
+      'Category',
+      'External URL',
       'Profile URL',
       'Scraped At',
     ];
@@ -58,6 +61,9 @@ export class CSVWriter {
       this.escapeCSV(profile.bio),
       profile.isVerified ? 'Yes' : 'No',
       profile.isPrivate ? 'Yes' : 'No',
+      profile.isBusinessAccount ? 'Yes' : 'No',
+      this.escapeCSV(profile.category || ''),
+      this.escapeCSV(profile.externalUrl || ''),
       `https://instagram.com/${profile.username}`,
       new Date().toISOString(),
     ];
