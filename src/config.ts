@@ -6,6 +6,7 @@ dotenv.config();
 export function getConfig(): Config {
   const igUsername = process.env.IG_USERNAME;
   const igPassword = process.env.IG_PASSWORD;
+  const igHandle = process.env.IG_HANDLE; // Optional: if login uses email but handle is different
   const outputFormat = (process.env.OUTPUT_FORMAT || 'csv') as 'csv' | 'google-sheets';
   const googleSheetId = process.env.GOOGLE_SHEET_ID;
   const googleServiceAccountKeyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH || './service-account-key.json';
@@ -22,6 +23,7 @@ export function getConfig(): Config {
   return {
     igUsername,
     igPassword,
+    igHandle,
     outputFormat,
     googleSheetId,
     googleServiceAccountKeyPath,

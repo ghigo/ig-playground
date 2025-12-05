@@ -13,6 +13,7 @@ export interface IGProfile {
 export interface Config {
   igUsername: string;
   igPassword: string;
+  igHandle?: string; // Optional: Instagram handle (if different from username/email)
   outputFormat: 'csv' | 'google-sheets';
   googleSheetId?: string;
   googleServiceAccountKeyPath?: string;

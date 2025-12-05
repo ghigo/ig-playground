@@ -46,9 +46,20 @@ async function main() {
     await scraper.login(config.igUsername, config.igPassword);
     console.log('✓ Successfully logged in\n');
 
+    // Determine the Instagram handle to use
+    let igHandle: string;
+    if (config.igHandle) {
+      igHandle = config.igHandle;
+      console.log(`Using provided Instagram handle: @${igHandle}\n`);
+    } else {
+      console.log('📍 Detecting Instagram handle...');
+      igHandle = await scraper.getCurrentUsername();
+      console.log(`✓ Detected Instagram handle: @${igHandle}\n`);
+    }
+
     // Get followers list
     console.log('👥 Fetching followers list...');
-    const followers = await scraper.getFollowersList(config.igUsername);
+    const followers = await scraper.getFollowersList(igHandle);
     console.log(`✓ Found ${followers.length} followers\n`);
 
     if (followers.length === 0) {

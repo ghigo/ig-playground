@@ -121,6 +121,62 @@ export class InstagramScraper {
     console.log('Successfully logged in!');
   }
 
+  async getCurrentUsername(): Promise<string> {
+    if (!this.page || !this.isLoggedIn) {
+      throw new Error('Not logged in');
+    }
+
+    try {
+      // Navigate to the home page if not already there
+      const currentUrl = this.page.url();
+      if (!currentUrl.includes('instagram.com')) {
+        await this.page.goto('https://www.instagram.com/', {
+          waitUntil: 'networkidle2',
+        });
+        await this.delay(2000);
+      }
+
+      // Try to find the profile link in the navigation
+      // Instagram usually has a link to your profile in the sidebar/nav
+      const profileLinks = await this.page.$$('a[href^="/"]');
+
+      for (const link of profileLinks) {
+        const href = await link.evaluate(el => el.getAttribute('href'));
+        if (href && href.match(/^\/[a-zA-Z0-9._]+\/?$/)) {
+          // This looks like a username link (not /explore, /reels, etc.)
+          const potentialUsername = href.replace(/\//g, '');
+
+          // Verify it's not a special page
+          if (
+            potentialUsername &&
+            potentialUsername !== 'explore' &&
+            potentialUsername !== 'reels' &&
+            potentialUsername !== 'direct' &&
+            potentialUsername.length > 0
+          ) {
+            // Try to visit the profile to confirm it's yours
+            await this.page.goto(`https://www.instagram.com/${potentialUsername}/`, {
+              waitUntil: 'networkidle2',
+            });
+            await this.delay(2000);
+
+            // Check if we see the "Edit Profile" button (indicates it's our profile)
+            const editProfileButton = await this.page.$('a[href="/accounts/edit/"]');
+
+            if (editProfileButton) {
+              console.log(`Detected Instagram handle: @${potentialUsername}`);
+              return potentialUsername;
+            }
+          }
+        }
+      }
+
+      throw new Error('Could not automatically detect Instagram username');
+    } catch (error) {
+      throw new Error(`Failed to detect Instagram username: ${error}`);
+    }
+  }
+
   private async checkIfLoggedIn(): Promise<boolean> {
     if (!this.page) return false;
 
