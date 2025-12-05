@@ -169,7 +169,8 @@ export class InstagramScraper {
 
       if (buttons.length > 0) {
         console.log('Dismissing "Save Login Info" dialog...');
-        await buttons[0].click();
+        const button = buttons[0] as any;
+        await button.click();
         await this.delay(2000);
       }
     } catch (error) {
@@ -189,7 +190,8 @@ export class InstagramScraper {
 
       if (buttons.length > 0) {
         console.log('Dismissing notifications dialog...');
-        await buttons[0].click();
+        const button = buttons[0] as any;
+        await button.click();
         await this.delay(2000);
       }
     } catch (error) {
@@ -216,7 +218,8 @@ export class InstagramScraper {
       const buttons = await this.page.$x("//button[contains(text(), 'Not Now') or contains(text(), 'not now')]");
       if (buttons.length > 0) {
         console.log('Dismissing dialog on profile page...');
-        await buttons[0].click();
+        const button = buttons[0] as any;
+        await button.click();
         await this.delay(2000);
       }
     } catch (error) {
