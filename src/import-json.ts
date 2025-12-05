@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { InstagramScraper } from './instagram-scraper';
 import { GoogleSheetsService } from './google-sheets';
 import { CSVWriter } from './csv-writer';
@@ -17,25 +18,75 @@ interface InstagramDataEntry {
   href?: string;
 }
 
+/**
+ * Find all related JSON files (e.g., followers_1.json, followers_2.json, etc.)
+ */
+function findRelatedJsonFiles(jsonFilePath: string): string[] {
+  const dir = path.dirname(jsonFilePath);
+  const basename = path.basename(jsonFilePath, '.json');
+
+  // Check if the file is numbered (e.g., followers_1.json)
+  const match = basename.match(/^(.+?)_(\d+)$/);
+
+  if (!match) {
+    // Not a numbered file, return just the original
+    return [jsonFilePath];
+  }
+
+  const [, baseName, startNum] = match;
+  const files: string[] = [];
+
+  // Find all numbered files
+  let fileNum = 1;
+  while (true) {
+    const testPath = path.join(dir, `${baseName}_${fileNum}.json`);
+    if (fs.existsSync(testPath)) {
+      files.push(testPath);
+      fileNum++;
+    } else {
+      break;
+    }
+  }
+
+  return files.length > 0 ? files : [jsonFilePath];
+}
+
 async function importFromJSON(jsonFilePath: string) {
   console.log('📂 Instagram JSON Importer\n');
 
-  // Read and parse JSON file
-  console.log(`Reading JSON file: ${jsonFilePath}...`);
+  // Find all related JSON files
+  console.log(`Searching for JSON files...`);
+  const jsonFiles = findRelatedJsonFiles(jsonFilePath);
 
-  if (!fs.existsSync(jsonFilePath)) {
-    throw new Error(`File not found: ${jsonFilePath}`);
+  if (jsonFiles.length > 1) {
+    console.log(`✓ Found ${jsonFiles.length} related JSON files:`);
+    jsonFiles.forEach((file, idx) => {
+      console.log(`   ${idx + 1}. ${path.basename(file)}`);
+    });
+    console.log();
+  } else {
+    console.log(`Reading JSON file: ${path.basename(jsonFilePath)}...`);
   }
 
-  const jsonContent = fs.readFileSync(jsonFilePath, 'utf-8');
-  const data: InstagramDataEntry[] = JSON.parse(jsonContent);
+  // Read and parse all JSON files
+  let allData: InstagramDataEntry[] = [];
 
-  console.log(`✓ JSON file loaded\n`);
+  for (const file of jsonFiles) {
+    if (!fs.existsSync(file)) {
+      throw new Error(`File not found: ${file}`);
+    }
+
+    const jsonContent = fs.readFileSync(file, 'utf-8');
+    const data: InstagramDataEntry[] = JSON.parse(jsonContent);
+    allData = allData.concat(data);
+  }
+
+  console.log(`✓ Loaded ${allData.length} entries from ${jsonFiles.length} file(s)\n`);
 
   // Extract usernames from various Instagram JSON formats
   const usernames: string[] = [];
 
-  for (const entry of data) {
+  for (const entry of allData) {
     // Format 1: string_list_data structure (most common)
     if (entry.string_list_data && Array.isArray(entry.string_list_data)) {
       for (const item of entry.string_list_data) {
@@ -66,7 +117,7 @@ async function importFromJSON(jsonFilePath: string) {
   // Remove duplicates
   const uniqueUsernames = Array.from(new Set(usernames));
 
-  console.log(`📊 Found ${uniqueUsernames.length} unique usernames in JSON file\n`);
+  console.log(`📊 Found ${uniqueUsernames.length} unique followers\n`);
 
   if (uniqueUsernames.length === 0) {
     throw new Error('No usernames found in JSON file. Please check the file format.');
@@ -99,6 +150,26 @@ async function importFromJSON(jsonFilePath: string) {
     console.log('✓ CSV Database initialized\n');
   }
 
+  // Mark unfollowed users and add placeholders (only for CSV database)
+  if (csvDatabase) {
+    const unfollowedCount = csvDatabase.markUnfollowed(uniqueUsernames);
+    if (unfollowedCount > 0) {
+      console.log(`⚠️  Marked ${unfollowedCount} users as unfollowed (no longer in follower list)\n`);
+    }
+
+    // Add placeholder entries for all new followers immediately
+    // This ensures they're in the CSV even if the script is interrupted
+    console.log('📝 Adding follower list to database...');
+    const addedCount = csvDatabase.addPlaceholders(uniqueUsernames);
+    if (addedCount > 0) {
+      console.log(`   ✓ Added ${addedCount} new followers to database`);
+    }
+
+    // Save the database with all followers before scraping
+    await csvDatabase.save();
+    console.log(`   ✓ Saved follower list to database\n`);
+  }
+
   // Initialize Instagram Scraper
   console.log('🌐 Initializing Instagram Scraper...');
   const scraper = new InstagramScraper(config.headless);
@@ -110,16 +181,8 @@ async function importFromJSON(jsonFilePath: string) {
   await scraper.login(config.igUsername, config.igPassword);
   console.log('✓ Successfully logged in\n');
 
-  // Mark unfollowed users (only for CSV database)
-  if (csvDatabase) {
-    const unfollowedCount = csvDatabase.markUnfollowed(uniqueUsernames);
-    if (unfollowedCount > 0) {
-      console.log(`⚠️  Marked ${unfollowedCount} users as unfollowed (no longer in follower list)\n`);
-    }
-  }
-
   // Scrape profile information for each username
-  console.log(`📝 Processing ${uniqueUsernames.length} followers...`);
+  console.log(`📝 Scraping profile information for ${uniqueUsernames.length} followers...`);
   console.log('   This may take a while...\n');
 
   const profiles: IGProfile[] = [];

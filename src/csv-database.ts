@@ -152,6 +152,39 @@ export class CSVDatabase {
   }
 
   /**
+   * Add placeholder entries for usernames that don't exist in the database yet
+   * This allows the follower list to be fully populated before scraping
+   */
+  addPlaceholders(usernames: string[]): number {
+    let addedCount = 0;
+
+    for (const username of usernames) {
+      // Only add if doesn't exist
+      if (!this.profileMap.has(username)) {
+        this.profileMap.set(username, {
+          username,
+          fullName: '',
+          followers: 0,
+          following: 0,
+          posts: 0,
+          bio: '',
+          isVerified: false,
+          isPrivate: false,
+          isBusinessAccount: false,
+          category: undefined,
+          externalUrl: undefined,
+          profilePicUrl: '',
+          lastUpdated: undefined, // No data yet
+          unfollowed: false,
+        });
+        addedCount++;
+      }
+    }
+
+    return addedCount;
+  }
+
+  /**
    * Mark users as unfollowed if they're not in the current follower list
    */
   markUnfollowed(currentUsernames: string[]): number {
