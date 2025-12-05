@@ -127,53 +127,113 @@ export class InstagramScraper {
     }
 
     try {
-      // Navigate to the home page if not already there
-      const currentUrl = this.page.url();
-      if (!currentUrl.includes('instagram.com')) {
+      console.log('   Method 1: Trying to extract from page data...');
+
+      // Navigate to the home page
+      await this.page.goto('https://www.instagram.com/', {
+        waitUntil: 'networkidle2',
+      });
+      await this.delay(3000);
+
+      // Method 1: Try to extract username from the page's JavaScript state
+      try {
+        const username = await this.page.evaluate(() => {
+          // Instagram stores user data in window._sharedData or similar
+          const scripts = Array.from(document.querySelectorAll('script'));
+          for (const script of scripts) {
+            const content = script.textContent || '';
+
+            // Look for username in various patterns
+            const patterns = [
+              /"username":"([^"]+)"/,
+              /'username':'([^']+)'/,
+              /viewerId.*?"username":"([^"]+)"/,
+            ];
+
+            for (const pattern of patterns) {
+              const match = content.match(pattern);
+              if (match && match[1]) {
+                return match[1];
+              }
+            }
+          }
+          return null;
+        });
+
+        if (username) {
+          console.log(`   ✓ Found username in page data: @${username}`);
+          return username;
+        }
+      } catch (e) {
+        console.log('   ✗ Method 1 failed');
+      }
+
+      // Method 2: Navigate to settings page and extract from URL or page
+      console.log('   Method 2: Checking settings page...');
+      try {
+        await this.page.goto('https://www.instagram.com/accounts/edit/', {
+          waitUntil: 'networkidle2',
+        });
+        await this.delay(2000);
+
+        // Check the username input field on the edit profile page
+        const usernameInput = await this.page.$('input[name="username"]');
+        if (usernameInput) {
+          const username = await usernameInput.evaluate(el => (el as HTMLInputElement).value);
+          if (username) {
+            console.log(`   ✓ Found username in settings: @${username}`);
+            return username;
+          }
+        }
+      } catch (e) {
+        console.log('   ✗ Method 2 failed');
+      }
+
+      // Method 3: Look for profile link with specific aria-label
+      console.log('   Method 3: Searching navigation for profile link...');
+      try {
         await this.page.goto('https://www.instagram.com/', {
           waitUntil: 'networkidle2',
         });
         await this.delay(2000);
-      }
 
-      // Try to find the profile link in the navigation
-      // Instagram usually has a link to your profile in the sidebar/nav
-      const profileLinks = await this.page.$$('a[href^="/"]');
+        // Try XPath to find profile link
+        const profileLinkElements = await this.page.$x("//a[contains(@href, '/') and not(contains(@href, 'explore')) and not(contains(@href, 'reels')) and not(contains(@href, 'direct'))]");
 
-      for (const link of profileLinks) {
-        const href = await link.evaluate(el => el.getAttribute('href'));
-        if (href && href.match(/^\/[a-zA-Z0-9._]+\/?$/)) {
-          // This looks like a username link (not /explore, /reels, etc.)
-          const potentialUsername = href.replace(/\//g, '');
+        for (const element of profileLinkElements) {
+          const href = await element.evaluate(el => el.getAttribute('href'));
 
-          // Verify it's not a special page
-          if (
-            potentialUsername &&
-            potentialUsername !== 'explore' &&
-            potentialUsername !== 'reels' &&
-            potentialUsername !== 'direct' &&
-            potentialUsername.length > 0
-          ) {
-            // Try to visit the profile to confirm it's yours
-            await this.page.goto(`https://www.instagram.com/${potentialUsername}/`, {
-              waitUntil: 'networkidle2',
-            });
-            await this.delay(2000);
+          if (href && href.match(/^\/[a-zA-Z0-9._]+\/?$/)) {
+            const username = href.replace(/\//g, '');
 
-            // Check if we see the "Edit Profile" button (indicates it's our profile)
-            const editProfileButton = await this.page.$('a[href="/accounts/edit/"]');
+            if (username && username.length > 0 && username !== 'explore' && username !== 'reels' && username !== 'direct') {
+              // Verify by visiting the profile
+              await this.page.goto(`https://www.instagram.com/${username}/`, {
+                waitUntil: 'networkidle2',
+              });
+              await this.delay(3000);
 
-            if (editProfileButton) {
-              console.log(`Detected Instagram handle: @${potentialUsername}`);
-              return potentialUsername;
+              // Look for edit profile button or text
+              const isOwnProfile = await this.page.evaluate(() => {
+                const text = document.body.innerText.toLowerCase();
+                return text.includes('edit profile') ||
+                       document.querySelector('a[href="/accounts/edit/"]') !== null;
+              });
+
+              if (isOwnProfile) {
+                console.log(`   ✓ Verified profile: @${username}`);
+                return username;
+              }
             }
           }
         }
+      } catch (e) {
+        console.log('   ✗ Method 3 failed');
       }
 
-      throw new Error('Could not automatically detect Instagram username');
+      throw new Error('Could not automatically detect Instagram username. Please add IG_HANDLE to your .env file.');
     } catch (error) {
-      throw new Error(`Failed to detect Instagram username: ${error}`);
+      throw new Error(`Failed to detect Instagram username: ${error}. Please add IG_HANDLE to your .env file with your Instagram handle.`);
     }
   }
 
