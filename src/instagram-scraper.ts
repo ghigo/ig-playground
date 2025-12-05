@@ -452,6 +452,29 @@ export class InstagramScraper {
 
     await this.delay(3000);
 
+    // Check if we're still logged in after navigation
+    console.log('Verifying login status...');
+    const stillLoggedIn = await this.checkIfLoggedIn();
+
+    if (!stillLoggedIn) {
+      console.log('⚠️  Session lost after navigation! Taking screenshot...');
+      await this.page.screenshot({ path: 'debug-session-lost.png' });
+
+      throw new Error(
+        'Session was lost after navigation. This can happen if:\n' +
+        '  1. Instagram detected automation\n' +
+        '  2. Cookies weren\'t saved properly\n' +
+        '  3. The "Save login info" wasn\'t checked during 2FA\n\n' +
+        'Try these fixes:\n' +
+        '  1. Delete the .browser-data folder and try again\n' +
+        '  2. Make sure you see "Checking Save login info checkbox" during 2FA\n' +
+        '  3. Run with HEADLESS=false to watch what happens\n\n' +
+        'Screenshot saved to debug-session-lost.png'
+      );
+    }
+
+    console.log('✓ Still logged in');
+
     // Try to dismiss any lingering dialogs on the profile page
     try {
       const buttons = await this.page.$x("//button[contains(text(), 'Not Now') or contains(text(), 'not now')]");
@@ -477,6 +500,12 @@ export class InstagramScraper {
     }
 
     if (!followersLink) {
+      // Check one more time if we're logged in
+      const finalLoginCheck = await this.checkIfLoggedIn();
+      if (!finalLoginCheck) {
+        throw new Error('Session was lost. You appear to be logged out. Delete .browser-data folder and try again.');
+      }
+
       // Take a screenshot for debugging
       console.log('Taking screenshot for debugging...');
       await this.page.screenshot({ path: 'debug-profile.png' });
