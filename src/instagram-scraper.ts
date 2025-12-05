@@ -201,7 +201,7 @@ export class InstagramScraper {
         const profileLinkElements = await this.page.$x("//a[contains(@href, '/') and not(contains(@href, 'explore')) and not(contains(@href, 'reels')) and not(contains(@href, 'direct'))]");
 
         for (const element of profileLinkElements) {
-          const href = await element.evaluate(el => el.getAttribute('href'));
+          const href = await element.evaluate(el => (el as Element).getAttribute('href'));
 
           if (href && href.match(/^\/[a-zA-Z0-9._]+\/?$/)) {
             const username = href.replace(/\//g, '');
