@@ -6,9 +6,11 @@ A Node.js/TypeScript application that logs into your Instagram account (with 2FA
 
 - ✅ Instagram login with 2FA support
 - ✅ Automatic follower list collection
+- ✅ **JSON import** - Import from Instagram's official data download (most reliable!)
 - ✅ Profile scraping (followers, following, posts, bio, verification status, etc.)
 - ✅ **CSV export (simple, no setup required)**
 - ✅ Google Sheets integration (optional)
+- ✅ Business account detection, external URLs, categories
 - ✅ Rate limiting to avoid being blocked
 - ✅ Batch saving
 - ✅ Progress tracking and error handling
@@ -18,6 +20,29 @@ A Node.js/TypeScript application that logs into your Instagram account (with 2FA
 **Want to get started in 5 minutes? Use CSV output!**
 
 See **[SIMPLE_SETUP.md](SIMPLE_SETUP.md)** for the easiest way to get running with CSV output (no Google Cloud setup needed).
+
+## JSON Import (Most Reliable!)
+
+**NEW:** Import and enrich follower data from Instagram's official data download!
+
+This is the **most reliable** method as it:
+- ✅ Gets your complete follower list (no scrolling limitations)
+- ✅ Uses Instagram's official export (no UI changes can break it)
+- ✅ Includes timestamps for when you followed/were followed
+- ✅ Works for thousands of followers
+
+### Quick Steps:
+
+1. Request your data: Instagram Settings → Privacy → Download Data
+2. Wait 24-48 hours for email
+3. Download and extract the ZIP file
+4. Run the importer:
+   ```bash
+   npm run build
+   npm run import path/to/followers.json
+   ```
+
+See **[JSON_IMPORT_GUIDE.md](JSON_IMPORT_GUIDE.md)** for complete instructions.
 
 ## Prerequisites
 
