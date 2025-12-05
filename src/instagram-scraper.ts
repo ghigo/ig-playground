@@ -180,9 +180,51 @@ export class InstagramScraper {
       await this.page.type('input[name="verificationCode"]', code, { delay: 150 });
       await this.delay(1500);
 
-      // Click confirm button
+      // Click confirm button - try multiple selectors
       console.log('Submitting 2FA code...');
-      await this.page.click('button[type="submit"]');
+      let buttonClicked = false;
+
+      // Try different button selectors that Instagram might use
+      const buttonSelectors = [
+        'button[type="submit"]',
+        'button:not([type="button"])',
+        'div[role="button"]',
+      ];
+
+      for (const selector of buttonSelectors) {
+        try {
+          const button = await this.page.$(selector);
+          if (button) {
+            await button.click();
+            buttonClicked = true;
+            console.log(`Clicked button using selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // Try next selector
+        }
+      }
+
+      // If no button found with CSS selectors, try XPath
+      if (!buttonClicked) {
+        console.log('Trying XPath to find submit button...');
+        const xpathButtons = await this.page.$x("//button[contains(text(), 'Confirm') or contains(text(), 'Next') or contains(text(), 'Submit')]");
+
+        if (xpathButtons.length > 0) {
+          const button = xpathButtons[0] as any;
+          await button.click();
+          buttonClicked = true;
+          console.log('Clicked button using XPath');
+        }
+      }
+
+      // If still no button, try pressing Enter in the input field
+      if (!buttonClicked) {
+        console.log('No button found, pressing Enter in the input field...');
+        await this.page.focus('input[name="verificationCode"]');
+        await this.page.keyboard.press('Enter');
+        buttonClicked = true;
+      }
 
       // Wait for navigation after 2FA
       console.log('Waiting for 2FA verification...');
