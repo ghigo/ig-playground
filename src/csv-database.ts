@@ -59,6 +59,10 @@ export class CSVDatabase {
       return null;
     }
 
+    // Parse lastUpdated - convert empty strings to undefined
+    const lastUpdatedValue = parts[13] || parts[12] || '';
+    const lastUpdated = lastUpdatedValue.trim() === '' ? undefined : lastUpdatedValue;
+
     return {
       username: parts[0],
       fullName: parts[1],
@@ -72,7 +76,7 @@ export class CSVDatabase {
       category: parts[9] || undefined,
       externalUrl: parts[10] || undefined,
       profilePicUrl: parts[11],
-      lastUpdated: parts[13] || parts[12], // Use Last Updated if available, otherwise Scraped At
+      lastUpdated, // undefined for never-scraped profiles
       unfollowed: parts[14] === 'true',
     };
   }
@@ -252,8 +256,8 @@ export class CSVDatabase {
         this.escapeCSV(profile.category || ''),
         this.escapeCSV(profile.externalUrl || ''),
         this.escapeCSV(`https://instagram.com/${profile.username}`),
-        this.escapeCSV(profile.lastUpdated || new Date().toISOString()),
-        this.escapeCSV(profile.lastUpdated || new Date().toISOString()),
+        this.escapeCSV(profile.lastUpdated || ''), // Keep empty for never-scraped profiles
+        this.escapeCSV(profile.lastUpdated || ''), // Keep empty for never-scraped profiles
         (profile.unfollowed || false).toString()
       ];
 
