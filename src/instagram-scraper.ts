@@ -106,7 +106,8 @@ export class InstagramScraper {
     }
 
     // Extra wait after 2FA to ensure page loads
-    await this.delay(3000);
+    console.log('Waiting for page to fully load after 2FA...');
+    await this.delay(5000);
 
     // Handle "Save Your Login Info?" dialog
     await this.handleSaveLoginInfo();
@@ -114,8 +115,9 @@ export class InstagramScraper {
     // Handle "Turn on Notifications" dialog
     await this.handleNotifications();
 
-    // Final wait to ensure we're fully logged in
-    await this.delay(2000);
+    // Final wait to ensure we're fully logged in and all dialogs are handled
+    console.log('Finalizing login...');
+    await this.delay(3000);
 
     this.isLoggedIn = true;
     console.log('Successfully logged in!');
@@ -283,7 +285,33 @@ export class InstagramScraper {
       await this.page.waitForSelector('input[name="verificationCode"]', { timeout: 60000 });
 
       // Give user time to see the screen
-      await this.delay(1000);
+      await this.delay(2000);
+
+      // Check the "Save login info" checkbox if it exists
+      try {
+        console.log('Looking for "Save login info" checkbox...');
+        const checkboxSelectors = [
+          'input[type="checkbox"]',
+          'input[name="saveBrowserToken"]',
+        ];
+
+        for (const selector of checkboxSelectors) {
+          const checkbox = await this.page.$(selector);
+          if (checkbox) {
+            const isChecked = await checkbox.evaluate(el => (el as HTMLInputElement).checked);
+            if (!isChecked) {
+              console.log('Checking "Save login info" checkbox...');
+              await checkbox.click();
+              await this.delay(500);
+            } else {
+              console.log('"Save login info" checkbox already checked');
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        console.log('No checkbox found or already checked');
+      }
 
       // Prompt user for 2FA code
       const code = await this.prompt2FACode();
@@ -291,10 +319,11 @@ export class InstagramScraper {
       console.log('Entering 2FA code...');
       // Clear the field first
       await this.page.click('input[name="verificationCode"]', { clickCount: 3 });
+      await this.delay(500);
 
-      // Enter 2FA code
-      await this.page.type('input[name="verificationCode"]', code, { delay: 150 });
-      await this.delay(1500);
+      // Enter 2FA code slowly so user can see it
+      await this.page.type('input[name="verificationCode"]', code, { delay: 200 });
+      await this.delay(2000);
 
       // Click confirm button - try multiple selectors
       console.log('Submitting 2FA code...');
@@ -342,9 +371,9 @@ export class InstagramScraper {
         buttonClicked = true;
       }
 
-      // Wait for navigation after 2FA
-      console.log('Waiting for 2FA verification...');
-      await this.delay(5000);
+      // Wait for navigation after 2FA - give it more time
+      console.log('Waiting for 2FA verification and page load...');
+      await this.delay(8000); // Increased from 5000
 
       console.log('2FA verification completed');
     } catch (error) {
