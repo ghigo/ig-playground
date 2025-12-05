@@ -7,6 +7,7 @@ export class InstagramScraper {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private isLoggedIn = false;
+  private profileScrapedCount = 0; // Track number of profiles scraped
 
   constructor(private headless: boolean = false) {}
 
@@ -35,6 +36,18 @@ export class InstagramScraper {
 
     // Set viewport
     await this.page.setViewport({ width: 1280, height: 800 });
+
+    // Disable images, CSS, and fonts to reduce memory usage
+    await this.page.setRequestInterception(true);
+    this.page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      // Block images, stylesheets, and fonts to save memory
+      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font') {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
   }
 
   async login(username: string, password: string): Promise<void> {
@@ -44,10 +57,10 @@ export class InstagramScraper {
 
     console.log('Checking if already logged in...');
     await this.page.goto('https://www.instagram.com/', {
-      waitUntil: 'networkidle2',
+      waitUntil: 'domcontentloaded',
     });
 
-    await this.delay(2000);
+    await this.delay(1500);
 
     // Check if we're already logged in by looking for common elements
     const isAlreadyLoggedIn = await this.checkIfLoggedIn();
@@ -66,7 +79,7 @@ export class InstagramScraper {
     console.log('Not logged in. Proceeding with login...');
     console.log('Navigating to Instagram login page...');
     await this.page.goto('https://www.instagram.com/accounts/login/', {
-      waitUntil: 'networkidle2',
+      waitUntil: 'domcontentloaded',
     });
 
     // Wait for login form
@@ -637,15 +650,30 @@ export class InstagramScraper {
       throw new Error('Not logged in');
     }
 
+    // Periodic memory cleanup
+    this.profileScrapedCount++;
+
+    // Recreate page every 20 profiles to prevent memory leaks
+    if (this.profileScrapedCount % 20 === 0) {
+      await this.recreatePage();
+    }
+
+    // Clear cache every 50 profiles
+    if (this.profileScrapedCount % 50 === 0) {
+      await this.clearCache();
+    }
+
     console.log(`Fetching profile info for @${username}...`);
 
     try {
+      // Use 'domcontentloaded' instead of 'networkidle2' for faster loads and less memory
       await this.page.goto(`https://www.instagram.com/${username}/`, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'domcontentloaded',
         timeout: 30000,
       });
 
-      await this.delay(2000);
+      // Wait for content to load
+      await this.delay(1500);
 
       // Extract profile information
       const profileInfo = await this.page.evaluate(() => {
@@ -815,6 +843,66 @@ export class InstagramScraper {
       this.browser = null;
       this.page = null;
       this.isLoggedIn = false;
+    }
+  }
+
+  /**
+   * Recreate page to prevent memory leaks
+   * Should be called periodically (e.g., every 20-30 profiles)
+   */
+  private async recreatePage(): Promise<void> {
+    if (!this.browser) {
+      throw new Error('Browser not initialized');
+    }
+
+    console.log('   🔄 Refreshing browser page to prevent memory leaks...');
+
+    // Close old page
+    if (this.page) {
+      await this.page.close();
+    }
+
+    // Create new page
+    this.page = await this.browser.newPage();
+
+    // Set user agent
+    await this.page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
+    // Set viewport
+    await this.page.setViewport({ width: 1280, height: 800 });
+
+    // Disable images and CSS to reduce memory usage
+    await this.page.setRequestInterception(true);
+    this.page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font') {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
+    console.log('   ✓ Page refreshed');
+  }
+
+  /**
+   * Clear browser cache using Chrome DevTools Protocol
+   */
+  private async clearCache(): Promise<void> {
+    if (!this.page) {
+      return;
+    }
+
+    try {
+      const client = await this.page.target().createCDPSession();
+      await client.send('Network.clearBrowserCache');
+      await client.send('Network.clearBrowserCookies');
+      await client.detach();
+      console.log('   🧹 Browser cache cleared');
+    } catch (error) {
+      // Silently fail if cache clearing doesn't work
     }
   }
 
