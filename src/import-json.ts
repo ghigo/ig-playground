@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { InstagramScraper } from './instagram-scraper';
 import { GoogleSheetsService } from './google-sheets';
+import { GoogleDriveService } from './google-drive';
 import { CSVWriter } from './csv-writer';
 import { CSVDatabase } from './csv-database';
 import { getConfig } from './config';
@@ -51,8 +52,26 @@ function findRelatedJsonFiles(jsonFilePath: string): string[] {
   return files.length > 0 ? files : [jsonFilePath];
 }
 
-async function importFromJSON(jsonFilePath: string) {
-  console.log('📂 Instagram JSON Importer\n');
+/**
+ * Load JSON data from Google Drive
+ */
+async function loadFromGoogleDrive(driveService: GoogleDriveService, filePattern: string): Promise<InstagramDataEntry[]> {
+  console.log(`📂 Loading from Google Drive...`);
+  console.log(`   Folder ID: ${driveService.getFolderId()}`);
+  console.log(`   Pattern: ${filePattern}\n`);
+
+  // Download and parse files matching the pattern
+  const allData = await driveService.downloadAndParseFiles(filePattern);
+
+  console.log(`✓ Loaded ${allData.length} entries from Google Drive\n`);
+  return allData;
+}
+
+/**
+ * Load JSON data from local filesystem
+ */
+function loadFromLocalFiles(jsonFilePath: string): InstagramDataEntry[] {
+  console.log(`📂 Loading from local filesystem...`);
 
   // Find all related JSON files
   console.log(`Searching for JSON files...`);
@@ -82,6 +101,40 @@ async function importFromJSON(jsonFilePath: string) {
   }
 
   console.log(`✓ Loaded ${allData.length} entries from ${jsonFiles.length} file(s)\n`);
+  return allData;
+}
+
+async function importFromJSON(jsonFilePath: string) {
+  console.log('📂 Instagram JSON Importer\n');
+
+  // Load configuration first to check for Google Drive
+  const config = getConfig();
+
+  // Determine if we should use Google Drive or local filesystem
+  // Use Google Drive if:
+  // 1. GOOGLE_DRIVE_FOLDER_ID is configured
+  // 2. The path looks like a filename (not an absolute path)
+  const useGoogleDrive = config.googleDriveFolderId && !path.isAbsolute(jsonFilePath);
+
+  let allData: InstagramDataEntry[] = [];
+
+  if (useGoogleDrive) {
+    // Load from Google Drive
+    console.log('🌐 Google Drive mode enabled\n');
+    const driveService = new GoogleDriveService(
+      config.googleDriveFolderId!,
+      config.googleServiceAccountKeyPath!
+    );
+
+    // Convert filename to pattern (e.g., "followers.json" -> "followers*.json")
+    const basename = path.basename(jsonFilePath, '.json');
+    const pattern = `${basename}*.json`;
+
+    allData = await loadFromGoogleDrive(driveService, pattern);
+  } else {
+    // Load from local filesystem
+    allData = loadFromLocalFiles(jsonFilePath);
+  }
 
   // Extract usernames from various Instagram JSON formats
   const usernames: string[] = [];
@@ -123,8 +176,7 @@ async function importFromJSON(jsonFilePath: string) {
     throw new Error('No usernames found in JSON file. Please check the file format.');
   }
 
-  // Now proceed with the normal scraping flow
-  const config = getConfig();
+  // Configuration summary
   console.log(`📋 Configuration loaded`);
   console.log(`   Output Format: ${config.outputFormat}`);
   console.log(`   Headless Mode: ${config.headless}`);

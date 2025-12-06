@@ -10,6 +10,7 @@ export function getConfig(): Config {
   const outputFormat = (process.env.OUTPUT_FORMAT || 'csv') as 'csv' | 'google-sheets';
   const googleSheetId = process.env.GOOGLE_SHEET_ID;
   const googleServiceAccountKeyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH || './service-account-key.json';
+  const googleDriveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   if (!igUsername || !igPassword) {
     throw new Error('Instagram credentials not found in .env file');
@@ -27,6 +28,7 @@ export function getConfig(): Config {
     outputFormat,
     googleSheetId,
     googleServiceAccountKeyPath,
+    googleDriveFolderId,
     headless: process.env.HEADLESS === 'true',
     scrapeDelay: parseInt(process.env.SCRAPE_DELAY || '3000', 10),
     cacheDays: parseInt(process.env.CACHE_DAYS || '10', 10),

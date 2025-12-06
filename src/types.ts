@@ -22,6 +22,7 @@ export interface Config {
   outputFormat: 'csv' | 'google-sheets';
   googleSheetId?: string;
   googleServiceAccountKeyPath?: string;
+  googleDriveFolderId?: string; // Optional: Google Drive folder ID for reading JSON files
   headless: boolean;
   scrapeDelay: number;
   cacheDays: number; // Number of days to cache profile data
