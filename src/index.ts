@@ -85,15 +85,16 @@ async function main() {
         console.log(`${progress} Scraping @${username}...`);
         const profile = await scraper.getProfileInfo(username);
         csvDatabase.upsert(profile);
+        // Save immediately after each profile to prevent data loss on interruption
+        await csvDatabase.save();
         scrapedCount++;
 
         // Display quick stats
         console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
 
-        // Save CSV database periodically
+        // Show progress save message every 10 profiles
         if (scrapedCount % batchSize === 0) {
-          await csvDatabase.save();
-          console.log(`   ✓ Saved progress to database\n`);
+          console.log(`   ✓ Saved progress to database (${scrapedCount} profiles)\n`);
         }
 
         // Delay to avoid rate limiting

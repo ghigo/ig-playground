@@ -213,6 +213,8 @@ async function importFromJSON(jsonFilePath: string) {
 
       if (csvDatabase) {
         csvDatabase.upsert(profile);
+        // Save immediately after each profile to prevent data loss on interruption
+        await csvDatabase.save();
       } else {
         profiles.push(profile);
       }
@@ -222,17 +224,16 @@ async function importFromJSON(jsonFilePath: string) {
       // Display quick stats
       console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
 
-      // Save in batches (Google Sheets only, CSV saves at end)
+      // Save in batches (Google Sheets only)
       if (sheetsService && profiles.length >= batchSize) {
         await sheetsService.addProfiles(profiles);
         console.log(`   ✓ Saved batch of ${profiles.length} profiles to Google Sheets\n`);
         profiles.length = 0; // Clear array
       }
 
-      // Save CSV database periodically
+      // Show progress save message every 10 profiles
       if (csvDatabase && scrapedCount % batchSize === 0) {
-        await csvDatabase.save();
-        console.log(`   ✓ Saved progress to database\n`);
+        console.log(`   ✓ Saved progress to database (${scrapedCount} profiles)\n`);
       }
 
       // Delay to avoid rate limiting
