@@ -1,11 +1,21 @@
 import { InstagramScraper } from './instagram-scraper';
 import { CSVDatabase } from './csv-database';
+import { GoogleSheetsService } from './google-sheets';
 import { getConfig } from './config';
+import { IGProfile } from './types';
 
 async function main() {
   console.log('🚀 Instagram Follower Scraper Starting...\n');
 
   try {
+    // Get account name from command line arguments
+    const args = process.argv.slice(2);
+    const accountName = args[0] || 'default';
+
+    if (accountName !== 'default') {
+      console.log(`📱 Account: ${accountName}\n`);
+    }
+
     // Load configuration
     const config = getConfig();
     console.log(`📋 Configuration loaded`);
@@ -15,24 +25,41 @@ async function main() {
     console.log(`   Scrape Delay: ${config.scrapeDelay}ms`);
     console.log(`   Cache Duration: ${config.cacheDays} days\n`);
 
-    // Initialize CSV Database (Google Sheets not supported for live scraping)
+    // Initialize database (CSV or Google Sheets)
+    let csvDatabase: CSVDatabase | null = null;
+    let sheetsService: GoogleSheetsService | null = null;
+    let followers: string[] = [];
+
     if (config.outputFormat === 'google-sheets') {
-      console.error('❌ Error: Google Sheets mode is not supported for live scraping');
-      console.error('   The follower list must be imported from a JSON file');
-      console.error('   Please set OUTPUT_FORMAT=csv in your .env file');
-      console.error('   Or use: npm run import followers.json');
-      process.exit(1);
+      console.log('📊 Initializing Google Sheets...');
+      sheetsService = new GoogleSheetsService(
+        config.googleSheetId!,
+        config.googleServiceAccountKeyPath!,
+        accountName
+      );
+      // Note: We don't initialize the sheet here because we're not importing new data
+      // We'll just append/update existing data
+      console.log('✓ Google Sheets service initialized\n');
+
+      // For Google Sheets, we need to get the follower list from the corresponding CSV
+      console.log('📄 Loading follower list from CSV database...');
+      const csvFilename = `instagram_followers_${accountName}.csv`;
+      const tempCsvDb = new CSVDatabase(csvFilename);
+      await tempCsvDb.load();
+      followers = tempCsvDb.getActiveFollowers();
+      console.log(`✓ Found ${followers.length} active followers in CSV database\n`);
+    } else {
+      console.log('📄 Initializing CSV Database...');
+      const csvFilename = `instagram_followers_${accountName}.csv`;
+      csvDatabase = new CSVDatabase(csvFilename);
+      await csvDatabase.load();
+      console.log('✓ CSV Database initialized\n');
+
+      // Get followers list from CSV database
+      console.log('👥 Loading followers list from database...');
+      followers = csvDatabase.getActiveFollowers();
+      console.log(`✓ Found ${followers.length} active followers in database\n`);
     }
-
-    console.log('📄 Initializing CSV Database...');
-    const csvDatabase = new CSVDatabase('instagram_followers.csv');
-    await csvDatabase.load();
-    console.log('✓ CSV Database initialized\n');
-
-    // Get followers list from CSV database
-    console.log('👥 Loading followers list from database...');
-    const followers = csvDatabase.getActiveFollowers();
-    console.log(`✓ Found ${followers.length} active followers in database\n`);
 
     if (followers.length === 0) {
       console.log('⚠️  No followers found in database.');
@@ -40,7 +67,7 @@ async function main() {
       console.log('   1. Go to Instagram Settings → Security → Download Data');
       console.log('   2. Wait for email (can take up to 48 hours)');
       console.log('   3. Download and extract the ZIP file');
-      console.log('   4. Run: npm run import followers.json');
+      console.log(`   4. Run: npm run import followers.json ${accountName !== 'default' ? accountName : ''}`);
       console.log('\n   The follower list can only be uploaded via JSON, not scraped.');
       return;
     }
@@ -64,6 +91,7 @@ async function main() {
     let scrapedCount = 0;
     let cachedCount = 0;
     const failedProfiles: string[] = []; // Track failed profiles for retry
+    const profiles: IGProfile[] = []; // For Google Sheets batch upload
 
     for (let i = 0; i < followers.length; i++) {
       const username = followers[i];
@@ -71,7 +99,8 @@ async function main() {
 
       try {
         // Check if we should update this profile (cache logic)
-        if (!csvDatabase.shouldUpdate(username, config.cacheDays)) {
+        // For CSV mode, check the database; for Sheets mode, we'll scrape all
+        if (csvDatabase && !csvDatabase.shouldUpdate(username, config.cacheDays)) {
           const cached = csvDatabase.get(username);
           if (cached) {
             console.log(`${progress} @${username} (cached)`);
@@ -85,16 +114,29 @@ async function main() {
 
         console.log(`${progress} Scraping @${username}...`);
         const profile = await scraper.getProfileInfo(username);
-        csvDatabase.upsert(profile);
-        // Save immediately after each profile to prevent data loss on interruption
-        await csvDatabase.save();
+
+        if (csvDatabase) {
+          csvDatabase.upsert(profile);
+          // Save immediately after each profile to prevent data loss on interruption
+          await csvDatabase.save();
+        } else if (sheetsService) {
+          profiles.push(profile);
+        }
+
         scrapedCount++;
 
         // Display quick stats
         console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
 
-        // Show progress save message every 10 profiles
-        if (scrapedCount % batchSize === 0) {
+        // Save in batches for Google Sheets
+        if (sheetsService && profiles.length >= batchSize) {
+          await sheetsService.addProfiles(profiles);
+          console.log(`   ✓ Saved batch of ${profiles.length} profiles to Google Sheets\n`);
+          profiles.length = 0; // Clear array
+        }
+
+        // Show progress save message every 10 profiles for CSV
+        if (csvDatabase && scrapedCount % batchSize === 0) {
           console.log(`   ✓ Saved progress to database (${scrapedCount} profiles)\n`);
         }
 
@@ -120,8 +162,14 @@ async function main() {
         try {
           console.log(`${progress} Retrying @${username}...`);
           const profile = await scraper.getProfileInfo(username);
-          csvDatabase.upsert(profile);
-          await csvDatabase.save();
+
+          if (csvDatabase) {
+            csvDatabase.upsert(profile);
+            await csvDatabase.save();
+          } else if (sheetsService) {
+            profiles.push(profile);
+          }
+
           scrapedCount++;
 
           console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
@@ -138,15 +186,26 @@ async function main() {
     }
 
     // Save final data
-    await csvDatabase.save();
-    const stats = csvDatabase.getStats();
-    console.log(`\n✓ Database saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
+    if (csvDatabase) {
+      await csvDatabase.save();
+      const stats = csvDatabase.getStats();
+      console.log(`\n✓ Database saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
+    } else if (sheetsService && profiles.length > 0) {
+      await sheetsService.addProfiles(profiles);
+      console.log(`\n✓ Saved final batch of ${profiles.length} profiles to Google Sheets`);
+    }
 
     console.log('\n✅ Scraping completed successfully!');
     console.log(`📊 Total followers: ${followers.length}`);
     console.log(`   • New/Updated profiles: ${scrapedCount}`);
     console.log(`   • Cached profiles: ${cachedCount}`);
-    console.log(`📁 CSV database saved to: ${csvDatabase.getFilePath()}`);
+
+    if (csvDatabase) {
+      console.log(`📁 CSV database saved to: ${csvDatabase.getFilePath()}`);
+    } else if (sheetsService) {
+      console.log(`🔗 View your Google Sheet: https://docs.google.com/spreadsheets/d/${config.googleSheetId}`);
+      console.log(`   Sheet tab: "${accountName}"`);
+    }
 
     // Close browser
     await scraper.close();

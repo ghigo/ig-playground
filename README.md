@@ -69,8 +69,6 @@ See **[JSON_IMPORT_GUIDE.md](JSON_IMPORT_GUIDE.md)** for complete instructions.
 - An Instagram account
 - Instagram data download (see Quick Start)
 
-**Note:** Google Sheets integration is only available for JSON import (`npm run import`), not for live scraping (`npm start`).
-
 ## Setup Instructions
 
 ### 1. Install Dependencies
@@ -154,9 +152,6 @@ GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./service-account-key.json
 # Google Drive Configuration (optional - for reading JSON from Drive)
 GOOGLE_DRIVE_FOLDER_ID=your_google_drive_folder_id
 
-# Note: Google Sheets mode only works with: npm run import
-# Live scraping (npm start) requires OUTPUT_FORMAT=csv
-
 # Optional Settings
 HEADLESS=false          # Set to 'true' to run browser in headless mode
 SCRAPE_DELAY=3000       # Delay between profile scrapes (milliseconds)
@@ -227,13 +222,20 @@ npm run import followers_business.json businessaccount
 ```bash
 # Update profile data for existing followers
 npm start
+
+# Or specify an account name for multi-account support
+npm start myaccount
 ```
 
 **What happens:**
-1. Loads follower list from CSV database
+1. Loads follower list from the account's CSV database
 2. Opens a browser and logs into Instagram
-3. Scrapes profile info only for followers whose data is older than `CACHE_DAYS`
-4. Updates the CSV database
+3. Scrapes profile info only for followers whose data is older than `CACHE_DAYS` (CSV mode) or all followers (Sheets mode)
+4. Updates the CSV database or Google Sheets tab
+
+**Multi-Account Support:**
+- CSV mode: Updates `instagram_followers_{accountName}.csv`
+- Google Sheets mode: Updates the sheet tab named `{accountName}`
 
 **Note:** You must import a follower list first using `npm run import`. The script cannot scrape the follower list directly from Instagram.
 
