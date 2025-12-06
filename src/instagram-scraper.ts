@@ -889,6 +889,7 @@ export class InstagramScraper {
 
   /**
    * Clear browser cache using Chrome DevTools Protocol
+   * NOTE: We only clear cache, NOT cookies, to preserve the login session
    */
   private async clearCache(): Promise<void> {
     if (!this.page) {
@@ -898,9 +899,10 @@ export class InstagramScraper {
     try {
       const client = await this.page.target().createCDPSession();
       await client.send('Network.clearBrowserCache');
-      await client.send('Network.clearBrowserCookies');
+      // DO NOT clear cookies - this would log us out!
+      // await client.send('Network.clearBrowserCookies');
       await client.detach();
-      console.log('   🧹 Browser cache cleared');
+      console.log('   🧹 Browser cache cleared (cookies preserved)');
     } catch (error) {
       // Silently fail if cache clearing doesn't work
     }
