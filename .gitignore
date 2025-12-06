@@ -2,8 +2,10 @@ node_modules/
 dist/
 output/
 .env
+accounts.json
 service-account-key.json
 *.log
 .DS_Store
 .browser-data/
+sessions/
 debug-*.png

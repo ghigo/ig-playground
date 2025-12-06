@@ -8,16 +8,21 @@ export class InstagramScraper {
   private page: Page | null = null;
   private isLoggedIn = false;
   private profileScrapedCount = 0; // Track number of profiles scraped
+  private sessionPath: string | null = null;
 
-  constructor(private headless: boolean = false) {}
+  constructor(private headless: boolean = false, sessionPath?: string) {
+    this.sessionPath = sessionPath || null;
+  }
 
   async init(): Promise<void> {
-    // Use a persistent user data directory to save session/cookies
-    const userDataDir = path.join(process.cwd(), '.browser-data');
+    // Use account-specific session directory if provided, otherwise use default
+    const userDataDir = this.sessionPath
+      ? path.dirname(this.sessionPath)
+      : path.join(process.cwd(), '.browser-data');
 
     this.browser = await puppeteer.launch({
       headless: this.headless,
-      userDataDir, // This saves cookies and session data
+      userDataDir, // This saves cookies and session data per account
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

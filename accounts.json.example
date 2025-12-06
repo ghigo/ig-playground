@@ -1,0 +1,11 @@
+{
+  "marcosgrignuoli": {
+    "username": "marcosgrignuoli",
+    "password": "your_password_here"
+  },
+  "business_account": {
+    "username": "business_account",
+    "password": "your_password_here",
+    "handle": "business_account"
+  }
+}

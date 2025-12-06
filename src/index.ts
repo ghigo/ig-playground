@@ -2,22 +2,22 @@ import { InstagramScraper } from './instagram-scraper';
 import { CSVDatabase } from './csv-database';
 import { GoogleSheetsService } from './google-sheets';
 import { getConfig } from './config';
+import { AccountManager } from './account-manager';
 import { IGProfile } from './types';
 
 async function main() {
   console.log('🚀 Instagram Follower Scraper Starting...\n');
 
   try {
-    // Get account name from command line arguments
+    // Get Instagram username from command line arguments
     const args = process.argv.slice(2);
-    const accountName = args[0] || 'default';
+    const igUsername = args[0]; // Can be undefined (will use .env)
 
-    if (accountName !== 'default') {
-      console.log(`📱 Account: ${accountName}\n`);
-    }
+    // Load configuration with account-specific credentials
+    const config = getConfig(igUsername);
+    const accountName = config.igUsername; // Use the IG username as the account name
 
-    // Load configuration
-    const config = getConfig();
+    console.log(`📱 Instagram Account: @${accountName}\n`);
     console.log(`📋 Configuration loaded`);
     console.log(`   Instagram Account: ${config.igUsername}`);
     console.log(`   Output Format: ${config.outputFormat}`);
@@ -69,9 +69,11 @@ async function main() {
       return;
     }
 
-    // Initialize Instagram Scraper
+    // Initialize Instagram Scraper with account-specific session
     console.log('🌐 Initializing Instagram Scraper...');
-    const scraper = new InstagramScraper(config.headless);
+    const accountManager = new AccountManager();
+    const sessionPath = accountManager.getSessionPath(accountName);
+    const scraper = new InstagramScraper(config.headless, sessionPath);
     await scraper.init();
     console.log('✓ Browser initialized\n');
 

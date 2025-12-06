@@ -6,6 +6,7 @@ import { GoogleDriveService } from './google-drive';
 import { CSVWriter } from './csv-writer';
 import { CSVDatabase } from './csv-database';
 import { getConfig } from './config';
+import { AccountManager } from './account-manager';
 import { IGProfile } from './types';
 
 interface InstagramDataEntry {
@@ -104,12 +105,14 @@ function loadFromLocalFiles(jsonFilePath: string): InstagramDataEntry[] {
   return allData;
 }
 
-async function importFromJSON(jsonFilePath: string, accountName: string = 'default') {
+async function importFromJSON(jsonFilePath: string, igUsername?: string) {
   console.log('📂 Instagram JSON Importer\n');
-  console.log(`📱 Account: ${accountName}\n`);
 
-  // Load configuration first to check for Google Drive
-  const config = getConfig();
+  // Load configuration with account-specific credentials
+  const config = getConfig(igUsername);
+  const accountName = config.igUsername; // Use the IG username as the account name
+
+  console.log(`📱 Instagram Account: @${accountName}\n`);
 
   // Determine if we should use Google Drive or local filesystem
   // Use Google Drive if:
@@ -239,9 +242,11 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
     console.log(`   ✓ Saved follower list to sheet\n`);
   }
 
-  // Initialize Instagram Scraper
+  // Initialize Instagram Scraper with account-specific session
   console.log('🌐 Initializing Instagram Scraper...');
-  const scraper = new InstagramScraper(config.headless);
+  const accountManager = new AccountManager();
+  const sessionPath = accountManager.getSessionPath(accountName);
+  const scraper = new InstagramScraper(config.headless, sessionPath);
   await scraper.init();
   console.log('✓ Browser initialized\n');
 
@@ -382,20 +387,29 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Get JSON file path and account name from command line arguments
+// Get JSON file path and Instagram username from command line arguments
 const args = process.argv.slice(2);
 
 if (args.length === 0) {
   console.error('❌ Error: Please provide a JSON file path');
   console.error('\nUsage:');
   console.error('  npm run import followers.json');
-  console.error('  npm run import followers.json accountName');
-  console.error('  npm run import accountName followers.json');
+  console.error('  npm run import followers.json igusername');
+  console.error('  npm run import igusername followers.json');
   console.error('  npm run import /path/to/followers.json');
   console.error('\nMulti-Account Support:');
-  console.error('  Each account will get its own:');
-  console.error('  - Sheet tab in Google Sheets (named after the account)');
-  console.error('  - CSV file (instagram_followers_accountName.csv)');
+  console.error('  Each account (identified by Instagram username) gets its own:');
+  console.error('  - Login session (sessions/username.json)');
+  console.error('  - Sheet tab in Google Sheets (named after the IG username)');
+  console.error('  - CSV file (instagram_followers_username.csv)');
+  console.error('\nAccount credentials are stored in accounts.json');
+  console.error('Example accounts.json:');
+  console.error('  {');
+  console.error('    "marcosgrignuoli": {');
+  console.error('      "username": "marcosgrignuoli",');
+  console.error('      "password": "your_password_here"');
+  console.error('    }');
+  console.error('  }');
   console.error('\nYou can get the JSON file by:');
   console.error('  1. Go to Instagram Settings → Security → Download Data');
   console.error('  2. Wait for email (can take up to 48 hours)');
@@ -405,42 +419,43 @@ if (args.length === 0) {
 }
 
 // Parse arguments - support both orders:
-// 1. "followers.json accountName"
-// 2. "accountName followers.json"
+// 1. "followers.json igusername"
+// 2. "igusername followers.json"
 let jsonFilePath: string;
-let accountName: string = 'default';
+let igUsername: string | undefined;
 
 if (args.length === 1) {
-  // Single argument: just the file path
+  // Single argument: just the file path (use .env credentials)
   jsonFilePath = args[0];
+  igUsername = undefined;
 } else if (args.length >= 2) {
-  // Two arguments: determine which is file and which is account name
+  // Two arguments: determine which is file and which is IG username
   // Files typically end in .json or contain path separators
   const isFirstArgFile = args[0].endsWith('.json') || args[0].includes('/') || args[0].includes('\\');
   const isSecondArgFile = args[1].endsWith('.json') || args[1].includes('/') || args[1].includes('\\');
 
   if (isFirstArgFile && !isSecondArgFile) {
-    // "followers.json accountName"
+    // "followers.json igusername"
     jsonFilePath = args[0];
-    accountName = args[1];
+    igUsername = args[1];
   } else if (!isFirstArgFile && isSecondArgFile) {
-    // "accountName followers.json"
-    accountName = args[0];
+    // "igusername followers.json"
+    igUsername = args[0];
     jsonFilePath = args[1];
   } else if (isFirstArgFile) {
     // Both look like files, or first is a file - use first as file
     jsonFilePath = args[0];
-    accountName = args[1];
+    igUsername = args[1];
   } else {
     // Neither looks like a file, assume first order
     jsonFilePath = args[0];
-    accountName = args[1];
+    igUsername = args[1];
   }
 } else {
   jsonFilePath = args[0];
 }
 
-importFromJSON(jsonFilePath, accountName).catch(error => {
+importFromJSON(jsonFilePath, igUsername).catch(error => {
   console.error('\n❌ Error:', error.message);
   process.exit(1);
 });
