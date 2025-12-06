@@ -5,7 +5,10 @@ A Node.js/TypeScript application that imports your Instagram followers list from
 ## Features
 
 - ✅ **JSON import** - Import follower list from Instagram's official data download (required!)
+- ✅ **Multi-account support** - Track multiple Instagram accounts separately (CSV files or sheet tabs)
+- ✅ **Google Drive integration** - Read JSON files directly from Google Drive
 - ✅ **CSV database** - Persistent storage with smart caching
+- ✅ **Google Sheets output** - Export to Google Sheets with separate tabs per account
 - ✅ **Cache system** - Skip re-fetching profiles scraped within X days (default: 10)
 - ✅ **Unfollower tracking** - Track who unfollowed you (marked, not deleted)
 - ✅ Instagram login with 2FA support
@@ -76,16 +79,16 @@ See **[JSON_IMPORT_GUIDE.md](JSON_IMPORT_GUIDE.md)** for complete instructions.
 npm install
 ```
 
-### 2. Set Up Google Sheets API
+### 2. Set Up Google Sheets and Drive APIs
 
 #### a. Create a Google Cloud Project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Enable the Google Sheets API:
+3. Enable the required APIs:
    - Navigate to "APIs & Services" > "Library"
-   - Search for "Google Sheets API"
-   - Click "Enable"
+   - Search for "Google Sheets API" and click "Enable"
+   - Search for "Google Drive API" and click "Enable" (if using Drive integration)
 
 #### b. Create a Service Account
 
@@ -148,6 +151,9 @@ OUTPUT_FORMAT=google-sheets
 GOOGLE_SHEET_ID=your_google_sheet_id
 GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./service-account-key.json
 
+# Google Drive Configuration (optional - for reading JSON from Drive)
+GOOGLE_DRIVE_FOLDER_ID=your_google_drive_folder_id
+
 # Note: Google Sheets mode only works with: npm run import
 # Live scraping (npm start) requires OUTPUT_FORMAT=csv
 
@@ -155,6 +161,18 @@ GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./service-account-key.json
 HEADLESS=false          # Set to 'true' to run browser in headless mode
 SCRAPE_DELAY=3000       # Delay between profile scrapes (milliseconds)
 ```
+
+**Using Google Drive for JSON files:**
+
+If you set `GOOGLE_DRIVE_FOLDER_ID`, the script will read JSON files from Google Drive instead of your local filesystem:
+
+1. Upload your `followers.json` files to a Google Drive folder
+2. Share the folder with your service account (viewer permissions)
+3. Copy the folder ID from the URL: `https://drive.google.com/drive/folders/FOLDER_ID_HERE`
+4. Set `GOOGLE_DRIVE_FOLDER_ID` in your `.env` file
+5. Run: `npm run import followers.json myaccount`
+
+The script will automatically download JSON files matching the pattern (e.g., `followers*.json` finds `followers_1.json`, `followers_2.json`, etc.)
 
 ### 4. Build the Project
 
@@ -169,6 +187,10 @@ npm run build
 ```bash
 # Import from Instagram data download
 npm run import path/to/followers.json
+
+# Or specify an account name for multi-account support
+npm run import followers.json myaccount
+npm run import myaccount followers.json  # Both orders work
 ```
 
 **What happens:**
@@ -176,7 +198,29 @@ npm run import path/to/followers.json
 2. Marks any unfollowed users in the database
 3. Opens a browser and logs into Instagram
 4. Scrapes profile info for new/expired followers (skips cached)
-5. Saves to `output/instagram_followers.csv`
+5. Saves to `output/instagram_followers.csv` (or `output/instagram_followers_myaccount.csv`)
+
+### Multi-Account Support
+
+Track followers for multiple Instagram accounts separately:
+
+**CSV Mode:**
+- Each account gets its own CSV file: `instagram_followers_{accountName}.csv`
+
+**Google Sheets Mode:**
+- Each account gets its own sheet/tab in the same spreadsheet
+- Sheet tabs are automatically created and named after the account
+
+```bash
+# Import for different accounts
+npm run import followers_main.json mainaccount
+npm run import followers_business.json businessaccount
+
+# Each account's data is kept separate
+# - CSV: output/instagram_followers_mainaccount.csv
+# - CSV: output/instagram_followers_businessaccount.csv
+# - Sheets: Tabs named "mainaccount" and "businessaccount"
+```
 
 ### Update Profile Data (Optional)
 

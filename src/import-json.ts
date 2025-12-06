@@ -104,8 +104,9 @@ function loadFromLocalFiles(jsonFilePath: string): InstagramDataEntry[] {
   return allData;
 }
 
-async function importFromJSON(jsonFilePath: string) {
+async function importFromJSON(jsonFilePath: string, accountName: string = 'default') {
   console.log('📂 Instagram JSON Importer\n');
+  console.log(`📱 Account: ${accountName}\n`);
 
   // Load configuration first to check for Google Drive
   const config = getConfig();
@@ -191,13 +192,16 @@ async function importFromJSON(jsonFilePath: string) {
     console.log('📊 Initializing Google Sheets...');
     sheetsService = new GoogleSheetsService(
       config.googleSheetId!,
-      config.googleServiceAccountKeyPath!
+      config.googleServiceAccountKeyPath!,
+      accountName // Use account name as sheet name
     );
     await sheetsService.initializeSheet();
     console.log('✓ Google Sheets initialized\n');
   } else {
     console.log('📄 Initializing CSV Database...');
-    csvDatabase = new CSVDatabase('instagram_followers.csv');
+    // Use account-specific CSV file
+    const csvFilename = `instagram_followers_${accountName}.csv`;
+    csvDatabase = new CSVDatabase(csvFilename);
     await csvDatabase.load();
     console.log('✓ CSV Database initialized\n');
   }
@@ -366,15 +370,21 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Get JSON file path from command line arguments
+// Get JSON file path and account name from command line arguments
 const args = process.argv.slice(2);
 
 if (args.length === 0) {
   console.error('❌ Error: Please provide a JSON file path');
   console.error('\nUsage:');
   console.error('  npm run import followers.json');
+  console.error('  npm run import followers.json accountName');
+  console.error('  npm run import accountName followers.json');
   console.error('  npm run import /path/to/followers.json');
-  console.error('\nYou can get this file by:');
+  console.error('\nMulti-Account Support:');
+  console.error('  Each account will get its own:');
+  console.error('  - Sheet tab in Google Sheets (named after the account)');
+  console.error('  - CSV file (instagram_followers_accountName.csv)');
+  console.error('\nYou can get the JSON file by:');
   console.error('  1. Go to Instagram Settings → Security → Download Data');
   console.error('  2. Wait for email (can take up to 48 hours)');
   console.error('  3. Download and extract the ZIP file');
@@ -382,9 +392,43 @@ if (args.length === 0) {
   process.exit(1);
 }
 
-const jsonFilePath = args[0];
+// Parse arguments - support both orders:
+// 1. "followers.json accountName"
+// 2. "accountName followers.json"
+let jsonFilePath: string;
+let accountName: string = 'default';
 
-importFromJSON(jsonFilePath).catch(error => {
+if (args.length === 1) {
+  // Single argument: just the file path
+  jsonFilePath = args[0];
+} else if (args.length >= 2) {
+  // Two arguments: determine which is file and which is account name
+  // Files typically end in .json or contain path separators
+  const isFirstArgFile = args[0].endsWith('.json') || args[0].includes('/') || args[0].includes('\\');
+  const isSecondArgFile = args[1].endsWith('.json') || args[1].includes('/') || args[1].includes('\\');
+
+  if (isFirstArgFile && !isSecondArgFile) {
+    // "followers.json accountName"
+    jsonFilePath = args[0];
+    accountName = args[1];
+  } else if (!isFirstArgFile && isSecondArgFile) {
+    // "accountName followers.json"
+    accountName = args[0];
+    jsonFilePath = args[1];
+  } else if (isFirstArgFile) {
+    // Both look like files, or first is a file - use first as file
+    jsonFilePath = args[0];
+    accountName = args[1];
+  } else {
+    // Neither looks like a file, assume first order
+    jsonFilePath = args[0];
+    accountName = args[1];
+  }
+} else {
+  jsonFilePath = args[0];
+}
+
+importFromJSON(jsonFilePath, accountName).catch(error => {
   console.error('\n❌ Error:', error.message);
   process.exit(1);
 });
