@@ -195,7 +195,7 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
       config.googleServiceAccountKeyPath!,
       accountName // Use account name as sheet name
     );
-    await sheetsService.initializeSheet();
+    await sheetsService.initializeSheet(false); // Don't clear - load existing data
     console.log('✓ Google Sheets initialized\n');
   } else {
     console.log('📄 Initializing CSV Database...');
@@ -206,7 +206,7 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
     console.log('✓ CSV Database initialized\n');
   }
 
-  // Mark unfollowed users and add placeholders (only for CSV database)
+  // Mark unfollowed users and add placeholders
   if (csvDatabase) {
     const unfollowedCount = csvDatabase.markUnfollowed(uniqueUsernames);
     if (unfollowedCount > 0) {
@@ -224,6 +224,19 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
     // Save the database with all followers before scraping
     await csvDatabase.save();
     console.log(`   ✓ Saved follower list to database\n`);
+  } else if (sheetsService) {
+    const unfollowedCount = await sheetsService.markUnfollowed(uniqueUsernames);
+    if (unfollowedCount > 0) {
+      console.log(`⚠️  Marked ${unfollowedCount} users as unfollowed (no longer in follower list)\n`);
+    }
+
+    // Add placeholder entries for all new followers immediately
+    console.log('📝 Adding follower list to sheet...');
+    const addedCount = await sheetsService.addPlaceholders(uniqueUsernames);
+    if (addedCount > 0) {
+      console.log(`   ✓ Added ${addedCount} new followers to sheet`);
+    }
+    console.log(`   ✓ Saved follower list to sheet\n`);
   }
 
   // Initialize Instagram Scraper
@@ -241,7 +254,6 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
   console.log(`📝 Scraping profile information for ${uniqueUsernames.length} followers...`);
   console.log('   This may take a while...\n');
 
-  const profiles: IGProfile[] = [];
   const batchSize = 10; // Save every 10 profiles
   let scrapedCount = 0;
   let cachedCount = 0;
@@ -252,14 +264,22 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
     const progress = `[${i + 1}/${uniqueUsernames.length}]`;
 
     try {
-      // Check if we should update this profile (cache logic for CSV)
-      if (csvDatabase && !csvDatabase.shouldUpdate(username, config.cacheDays)) {
-        const cached = csvDatabase.get(username);
+      // Check if we should update this profile (cache logic)
+      const shouldUpdate = csvDatabase
+        ? csvDatabase.shouldUpdate(username, config.cacheDays)
+        : sheetsService!.shouldUpdate(username, config.cacheDays);
+
+      if (!shouldUpdate) {
+        const cached = csvDatabase ? csvDatabase.get(username) : sheetsService!.get(username);
         if (cached) {
           console.log(`${progress} @${username} (cached)`);
           console.log(`   → ${cached.fullName || 'N/A'} | Followers: ${cached.followers} | Using cached data`);
           // Still upsert to mark as not unfollowed
-          csvDatabase.upsert(cached);
+          if (csvDatabase) {
+            csvDatabase.upsert(cached);
+          } else if (sheetsService) {
+            await sheetsService.upsert(cached);
+          }
           cachedCount++;
           continue;
         }
@@ -272,8 +292,8 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
         csvDatabase.upsert(profile);
         // Save immediately after each profile to prevent data loss on interruption
         await csvDatabase.save();
-      } else {
-        profiles.push(profile);
+      } else if (sheetsService) {
+        await sheetsService.upsert(profile);
       }
 
       scrapedCount++;
@@ -281,16 +301,9 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
       // Display quick stats
       console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
 
-      // Save in batches (Google Sheets only)
-      if (sheetsService && profiles.length >= batchSize) {
-        await sheetsService.addProfiles(profiles);
-        console.log(`   ✓ Saved batch of ${profiles.length} profiles to Google Sheets\n`);
-        profiles.length = 0; // Clear array
-      }
-
       // Show progress save message every 10 profiles
-      if (csvDatabase && scrapedCount % batchSize === 0) {
-        console.log(`   ✓ Saved progress to database (${scrapedCount} profiles)\n`);
+      if (scrapedCount % batchSize === 0) {
+        console.log(`   ✓ Saved progress to ${csvDatabase ? 'database' : 'sheet'} (${scrapedCount} profiles)\n`);
       }
 
       // Delay to avoid rate limiting
@@ -319,8 +332,8 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
         if (csvDatabase) {
           csvDatabase.upsert(profile);
           await csvDatabase.save();
-        } else {
-          profiles.push(profile);
+        } else if (sheetsService) {
+          await sheetsService.upsert(profile);
         }
 
         scrapedCount++;
@@ -338,16 +351,14 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
     }
   }
 
-  // Save final data
-  if (sheetsService && profiles.length > 0) {
-    await sheetsService.addProfiles(profiles);
-    console.log(`\n✓ Saved final batch of ${profiles.length} profiles to Google Sheets`);
-  }
-
+  // Save final data and show stats
   if (csvDatabase) {
     await csvDatabase.save();
     const stats = csvDatabase.getStats();
     console.log(`\n✓ Database saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
+  } else if (sheetsService) {
+    const stats = sheetsService.getStats();
+    console.log(`\n✓ Sheet saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
   }
 
   console.log('\n✅ Import completed successfully!');
@@ -357,6 +368,7 @@ async function importFromJSON(jsonFilePath: string, accountName: string = 'defau
 
   if (config.outputFormat === 'google-sheets') {
     console.log(`🔗 View your Google Sheet: https://docs.google.com/spreadsheets/d/${config.googleSheetId}`);
+    console.log(`   Sheet tab: "${accountName}"`);
   } else if (csvDatabase) {
     console.log(`📁 CSV database saved to: ${csvDatabase.getFilePath()}`);
   }

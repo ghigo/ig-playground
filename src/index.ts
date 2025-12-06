@@ -37,17 +37,14 @@ async function main() {
         config.googleServiceAccountKeyPath!,
         accountName
       );
-      // Note: We don't initialize the sheet here because we're not importing new data
-      // We'll just append/update existing data
-      console.log('✓ Google Sheets service initialized\n');
+      // Load existing data from the sheet
+      await sheetsService.initializeSheet(false); // Don't clear - load existing data
+      console.log('✓ Google Sheets initialized\n');
 
-      // For Google Sheets, we need to get the follower list from the corresponding CSV
-      console.log('📄 Loading follower list from CSV database...');
-      const csvFilename = `instagram_followers_${accountName}.csv`;
-      const tempCsvDb = new CSVDatabase(csvFilename);
-      await tempCsvDb.load();
-      followers = tempCsvDb.getActiveFollowers();
-      console.log(`✓ Found ${followers.length} active followers in CSV database\n`);
+      // Get followers list from Google Sheets
+      console.log('👥 Loading followers list from sheet...');
+      followers = sheetsService.getActiveFollowers();
+      console.log(`✓ Found ${followers.length} active followers in sheet\n`);
     } else {
       console.log('📄 Initializing CSV Database...');
       const csvFilename = `instagram_followers_${accountName}.csv`;
@@ -91,7 +88,6 @@ async function main() {
     let scrapedCount = 0;
     let cachedCount = 0;
     const failedProfiles: string[] = []; // Track failed profiles for retry
-    const profiles: IGProfile[] = []; // For Google Sheets batch upload
 
     for (let i = 0; i < followers.length; i++) {
       const username = followers[i];
@@ -99,14 +95,21 @@ async function main() {
 
       try {
         // Check if we should update this profile (cache logic)
-        // For CSV mode, check the database; for Sheets mode, we'll scrape all
-        if (csvDatabase && !csvDatabase.shouldUpdate(username, config.cacheDays)) {
-          const cached = csvDatabase.get(username);
+        const shouldUpdate = csvDatabase
+          ? csvDatabase.shouldUpdate(username, config.cacheDays)
+          : sheetsService!.shouldUpdate(username, config.cacheDays);
+
+        if (!shouldUpdate) {
+          const cached = csvDatabase ? csvDatabase.get(username) : sheetsService!.get(username);
           if (cached) {
             console.log(`${progress} @${username} (cached)`);
             console.log(`   → ${cached.fullName || 'N/A'} | Followers: ${cached.followers} | Using cached data`);
             // Still upsert to mark as not unfollowed
-            csvDatabase.upsert(cached);
+            if (csvDatabase) {
+              csvDatabase.upsert(cached);
+            } else if (sheetsService) {
+              await sheetsService.upsert(cached);
+            }
             cachedCount++;
             continue;
           }
@@ -120,7 +123,7 @@ async function main() {
           // Save immediately after each profile to prevent data loss on interruption
           await csvDatabase.save();
         } else if (sheetsService) {
-          profiles.push(profile);
+          await sheetsService.upsert(profile);
         }
 
         scrapedCount++;
@@ -128,16 +131,9 @@ async function main() {
         // Display quick stats
         console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
 
-        // Save in batches for Google Sheets
-        if (sheetsService && profiles.length >= batchSize) {
-          await sheetsService.addProfiles(profiles);
-          console.log(`   ✓ Saved batch of ${profiles.length} profiles to Google Sheets\n`);
-          profiles.length = 0; // Clear array
-        }
-
-        // Show progress save message every 10 profiles for CSV
-        if (csvDatabase && scrapedCount % batchSize === 0) {
-          console.log(`   ✓ Saved progress to database (${scrapedCount} profiles)\n`);
+        // Show progress save message every 10 profiles
+        if (scrapedCount % batchSize === 0) {
+          console.log(`   ✓ Saved progress to ${csvDatabase ? 'database' : 'sheet'} (${scrapedCount} profiles)\n`);
         }
 
         // Delay to avoid rate limiting
@@ -167,7 +163,7 @@ async function main() {
             csvDatabase.upsert(profile);
             await csvDatabase.save();
           } else if (sheetsService) {
-            profiles.push(profile);
+            await sheetsService.upsert(profile);
           }
 
           scrapedCount++;
@@ -185,14 +181,14 @@ async function main() {
       }
     }
 
-    // Save final data
+    // Save final data and show stats
     if (csvDatabase) {
       await csvDatabase.save();
       const stats = csvDatabase.getStats();
       console.log(`\n✓ Database saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
-    } else if (sheetsService && profiles.length > 0) {
-      await sheetsService.addProfiles(profiles);
-      console.log(`\n✓ Saved final batch of ${profiles.length} profiles to Google Sheets`);
+    } else if (sheetsService) {
+      const stats = sheetsService.getStats();
+      console.log(`\n✓ Sheet saved with ${stats.total} profiles (${stats.active} active, ${stats.unfollowed} unfollowed)`);
     }
 
     console.log('\n✅ Scraping completed successfully!');
