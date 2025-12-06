@@ -189,6 +189,7 @@ async function importFromJSON(jsonFilePath: string) {
   const batchSize = 10; // Save every 10 profiles
   let scrapedCount = 0;
   let cachedCount = 0;
+  const failedProfiles: string[] = []; // Track failed profiles for retry
 
   for (let i = 0; i < uniqueUsernames.length; i++) {
     const username = uniqueUsernames[i];
@@ -242,7 +243,42 @@ async function importFromJSON(jsonFilePath: string) {
       }
     } catch (error) {
       console.error(`   ✗ Error scraping @${username}:`, (error as Error).message);
+      failedProfiles.push(username);
       // Continue with next follower
+    }
+  }
+
+  // Retry failed profiles once
+  if (failedProfiles.length > 0) {
+    console.log(`\n🔄 Retrying ${failedProfiles.length} failed profiles...\n`);
+
+    for (let i = 0; i < failedProfiles.length; i++) {
+      const username = failedProfiles[i];
+      const progress = `[${i + 1}/${failedProfiles.length}]`;
+
+      try {
+        console.log(`${progress} Retrying @${username}...`);
+        const profile = await scraper.getProfileInfo(username);
+
+        if (csvDatabase) {
+          csvDatabase.upsert(profile);
+          await csvDatabase.save();
+        } else {
+          profiles.push(profile);
+        }
+
+        scrapedCount++;
+
+        console.log(`   → ${profile.fullName || 'N/A'} | Followers: ${profile.followers} | Following: ${profile.following} | Posts: ${profile.posts}`);
+
+        // Delay to avoid rate limiting
+        if (i < failedProfiles.length - 1) {
+          await delay(config.scrapeDelay);
+        }
+      } catch (error) {
+        console.error(`   ✗ Retry failed for @${username}:`, (error as Error).message);
+        // Don't add to failed list again, just skip
+      }
     }
   }
 
