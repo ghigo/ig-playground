@@ -303,7 +303,7 @@ export class GoogleSheetsService {
         };
         placeholders.push(placeholder);
 
-        const newRowIndex = this.profileMap.size + placeholders.length + 1; // +1 for header
+        const newRowIndex = this.profileMap.size + 2; // +1 for header, +1 for 1-indexing
         this.profileMap.set(username, {
           ...placeholder,
           rowIndex: newRowIndex,
